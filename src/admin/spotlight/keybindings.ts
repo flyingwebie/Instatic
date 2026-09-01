@@ -170,6 +170,20 @@ export const KEYBINDINGS: ReadonlyArray<KeybindingDefinition> = [
     capability: 'ai.chat',
   },
 
+  {
+    commandId: 'godMode.toggle',
+    shortcut: { mac: '\u2318\u21e7G', win: 'Ctrl+Shift+G' },
+    ariaKeyshortcuts: isPlatformMac() ? 'Meta+Shift+G' : 'Control+Shift+G',
+    match: (e) =>
+      (e.metaKey || e.ctrlKey) &&
+      e.shiftKey &&
+      !e.altKey &&
+      e.key.toLowerCase() === 'g',
+    scope: 'editor',
+    ignoreInEditableField: true,
+    capability: 'site.structure.edit',
+  },
+
   // ── Canvas + Layers tree (layer operations) ─────────────────────────────────
 
   {

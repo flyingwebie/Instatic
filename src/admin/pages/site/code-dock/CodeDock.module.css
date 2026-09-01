@@ -1,0 +1,125 @@
+.dock {
+  position: relative;
+  flex: none;
+  display: flex;
+  flex-direction: column;
+  height: var(--code-dock-height);
+  min-height: 0;
+  background: var(--bg-surface);
+  border-top: 1px solid var(--border-muted);
+}
+
+.heightHandle {
+  position: absolute;
+  top: -3px;
+  left: 0;
+  right: 0;
+  height: 6px;
+  cursor: row-resize;
+  z-index: 1;
+  touch-action: none;
+}
+
+.heightHandle:hover,
+.heightHandle:focus-visible {
+  background: var(--overlay-10);
+  outline: none;
+}
+
+.header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: var(--space-s);
+  padding: var(--space-2xs) var(--space-s);
+  border-bottom: 1px solid var(--border-subtle);
+}
+
+.panelButtons {
+  display: flex;
+  align-items: center;
+  gap: var(--space-4xs);
+}
+
+.columns {
+  display: flex;
+  flex: 1;
+  min-height: 0;
+}
+
+.columnGroup {
+  display: flex;
+  flex: 1;
+  min-width: 0;
+}
+
+.column {
+  display: flex;
+  flex-direction: column;
+  flex: 1 1 0;
+  min-width: 0;
+  min-height: 0;
+}
+
+/* Per-column flex weights, driven by uiSlice via CSS custom properties
+   (updated imperatively during divider drags, committed on pointer-up). */
+.column_html {
+  flex-grow: var(--code-dock-weight-html);
+}
+
+.column_css {
+  flex-grow: var(--code-dock-weight-css);
+}
+
+.column_js {
+  flex-grow: var(--code-dock-weight-js);
+}
+
+.columnDivider {
+  flex: none;
+  width: 6px;
+  margin: 0 calc(-1 * var(--space-3xs));
+  cursor: col-resize;
+  z-index: 1;
+  touch-action: none;
+}
+
+.columnDivider:hover,
+.columnDivider:focus-visible {
+  background: var(--overlay-10);
+}
+
+.columnGroup + .columnGroup .column {
+  border-left: 1px solid var(--border-subtle);
+}
+
+.columnTitle {
+  padding: var(--space-2xs) var(--space-s);
+  font-size: var(--text-2xs);
+  font-weight: 600;
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+  color: var(--text-subtle);
+}
+
+.columnBody {
+  flex: 1;
+  min-height: 0;
+  overflow: auto;
+  padding: 0 var(--space-s) var(--space-s);
+}
+
+.placeholder {
+  margin: 0;
+  font-size: var(--text-s);
+  color: var(--text-muted);
+}
+
+.allHidden {
+  flex: 1;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-size: var(--text-s);
+  color: var(--text-muted);
+}
