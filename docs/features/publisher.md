@@ -195,7 +195,9 @@ feature doc: [`god-mode.md`](god-mode.md)). Differences from a publish render:
 
   The loop/outlet attributes are exactly `htmlImport/rules.ts`'s
   `mapLoopProps`/`mapOutletProps` vocabulary — one dialect, emit and import.
-  Tag names are exported as `PROJECTION_TAGS` from `@core/publisher`.
+  Tag names are exported as `PROJECTION_TAGS` from `@core/publisher`; the
+  inverse is `importProjectionHtml` — the uid-preserving import
+  ([`html-import.md`](html-import.md) → "Uid-preserving projection import").
 
 With `projection` absent or false the render is byte-identical to before the
 flag existed — gated by `projectionRender.test.ts`.

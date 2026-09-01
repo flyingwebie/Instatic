@@ -6,11 +6,13 @@ bottom of the editor. The mode gives structure editors direct code control over 
 page while the page tree stays the single source of truth. Spec history:
 `.scratch/god-mode/` (local); vocabulary: `CONTEXT.md`.
 
-Current status: the **shell** (toggle, dock layout, persistence) and the
+Current status: the **shell** (toggle, dock layout, persistence), the
 **editable HTML projection render** (`RenderConfig.projection`, see
-[`publisher.md`](publisher.md) → "Editable HTML projection") are implemented.
-The three panels are placeholders; the HTML/CSS/JS editors, the uid-preserving
-import, and autocomplete land in follow-up changes.
+[`publisher.md`](publisher.md) → "Editable HTML projection"), and the
+**uid-preserving HTML import** (`importProjectionHtml`, see
+[`html-import.md`](html-import.md) → "Uid-preserving projection import") are
+implemented. The three panels are placeholders; the HTML/CSS/JS editors and
+autocomplete land in follow-up changes.
 
 ## Enabling and entering
 
@@ -93,5 +95,8 @@ and dynamic-data tokens. See `.scratch/god-mode/spec.md` for the full design.
 - `src/__tests__/publisher/projectionRender.test.ts` — the editable HTML
   projection dialect (tokens, uid/hidden, loop/component/slot/outlet markers,
   publish path unchanged).
+- `src/__tests__/htmlImport/projectionImport.test.ts` — the uid-preserving
+  import (round-trip identity, patch/create/delete/move semantics, partial
+  loop-filters patching, destructive-deletion diff flags).
 - `src/__tests__/settings/settingsSections.test.tsx` — capability-gated
   preference hidden for non-structure editors.
