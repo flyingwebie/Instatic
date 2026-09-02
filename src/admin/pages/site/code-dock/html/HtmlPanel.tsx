@@ -29,8 +29,15 @@
  *     by a canvas undo), so the draft can never be applied. The panel moves
  *     on to the new scope but names the lost draft in a banner, with its
  *     text one click from the clipboard — never a silent loss.
+ *
+ * The panel is also an INSPECTOR (reverse selection sync): the editor
+ * reports the `uid` under the cursor (`onCursorUid`) and the panel hovers
+ * that node — canvas hover ring, layer-panel highlight — as long as it is a
+ * node of the projected tree; a click on a tag name (`onTagClick`) selects
+ * the node, which re-scopes the panels through the normal selection flow.
+ * The read-only view is inert. Focus stays in the editor throughout.
  */
-import { lazy, Suspense, useState } from 'react'
+import { lazy, Suspense, useEffect, useRef, useState } from 'react'
 import { useShallow } from 'zustand/react/shallow'
 import { importProjectionHtml, type ProjectionImportResult } from '@core/htmlImport'
 import { registry } from '@core/module-engine'
@@ -145,6 +152,8 @@ export function HtmlPanel() {
   const inputs = useEditorStore(useShallow(selectSelectionScope))
   const applyProjectionImport = useEditorStore((s) => s.applyProjectionImport)
   const setActiveDocument = useEditorStore((s) => s.setActiveDocument)
+  const hoverNode = useEditorStore((s) => s.hoverNode)
+  const selectNode = useEditorStore((s) => s.selectNode)
   const document = deriveHtmlPanelDocument(inputs)
   // Unapplied edits, per scope: switching selection never discards them.
   const [drafts, setDrafts] = useState<Record<string, Draft>>({})
@@ -159,6 +168,18 @@ export function HtmlPanel() {
   const [applied, setApplied] = useState<AppliedReport | null>(null)
   const [pending, setPending] = useState<PendingApply | null>(null)
   const dataMeta = useDataMeta()
+  // The node this panel is hover-highlighting from the cursor, so unmounting
+  // (leaving God Mode) can drop a highlight nobody else owns.
+  const inspectorHoverRef = useRef<string | null>(null)
+  useEffect(
+    () => () => {
+      const hovered = inspectorHoverRef.current
+      if (hovered !== null && useEditorStore.getState().hoveredNodeId === hovered) {
+        useEditorStore.getState().hoverNode(null)
+      }
+    },
+    [],
+  )
 
   if (!document || !inputs.site) {
     return <p className={styles.empty}>Open a page to edit its HTML.</p>
@@ -296,6 +317,19 @@ export function HtmlPanel() {
     setBufferRevision((r) => r + 1)
   }
 
+  // Reverse selection sync — only uids of the projected tree count; a typed
+  // (unapplied) uid, or none, highlights nothing. The read-only view of a
+  // Component instance's internals is inert: no highlight, no selection.
+  const onCursorUid = (uid: string | null) => {
+    const id = !readOnly && uid !== null && uid in tree.nodes ? uid : null
+    inspectorHoverRef.current = id
+    if (useEditorStore.getState().hoveredNodeId !== id) hoverNode(id)
+  }
+
+  const onTagClick = (uid: string) => {
+    if (!readOnly && uid in tree.nodes && uid !== inputs.selectedNodeId) selectNode(uid)
+  }
+
   const copyOrphanedDraft = async () => {
     if (!orphaned) return
     try {
@@ -378,6 +412,8 @@ export function HtmlPanel() {
             completions={completions}
             onChange={onChange}
             onSubmit={apply}
+            onCursorUid={onCursorUid}
+            onTagClick={onTagClick}
           />
         </Suspense>
       </div>

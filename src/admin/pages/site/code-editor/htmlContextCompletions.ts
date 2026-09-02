@@ -17,7 +17,7 @@
 import type { Completion, CompletionContext, CompletionResult } from '@codemirror/autocomplete'
 import { syntaxTree } from '@codemirror/language'
 import type { EditorState } from '@codemirror/state'
-import type { SyntaxNode } from './syntaxNode'
+import { elementAttribute, enclosingElement, type SyntaxNode } from './syntaxNode'
 import { PROJECTION_TAGS, PROJECTION_TAG_ATTRIBUTES, isProjectionTag } from '@core/publisher'
 import {
   resolveEntryFields,
@@ -31,34 +31,15 @@ const IDENTIFIER = /^[:\-.\w\u00b7-\uffff]*$/
 const CLASS_WORD = /^[^\s"'<>]*$/
 const TOKEN_PATH = /^[\w.]*$/
 
-function findParentElement(node: SyntaxNode | null): SyntaxNode | null {
-  for (let current = node; current; current = current.parent) {
-    if (current.name === 'Element') return current
-  }
-  return null
-}
-
 function elementTagName(state: EditorState, element: SyntaxNode | null): string {
   const tag = element?.firstChild?.getChild('TagName')
   return tag ? state.sliceDoc(tag.from, tag.to) : ''
 }
 
-function elementAttribute(state: EditorState, element: SyntaxNode, name: string): string | null {
-  const openTag = element.firstChild
-  if (!openTag) return null
-  for (const attribute of openTag.getChildren('Attribute')) {
-    const nameNode = attribute.getChild('AttributeName')
-    if (!nameNode || state.sliceDoc(nameNode.from, nameNode.to) !== name) continue
-    const valueNode = attribute.getChild('AttributeValue') ?? attribute.getChild('UnquotedAttributeValue')
-    return valueNode ? state.sliceDoc(valueNode.from, valueNode.to).replace(/^["']|["']$/g, '') : ''
-  }
-  return null
-}
-
 /** The `<instatic-loop>` elements enclosing `node`, outermost first. */
 function enclosingLoopFrames(state: EditorState, node: SyntaxNode): EntryFrame[] {
   const frames: EntryFrame[] = []
-  for (let element = findParentElement(node); element; element = findParentElement(element.parent)) {
+  for (let element = enclosingElement(node); element; element = enclosingElement(element.parent)) {
     if (elementTagName(state, element) !== PROJECTION_TAGS.loop) continue
     frames.unshift({
       kind: 'loop',
@@ -79,7 +60,7 @@ function tagCompletions(from: number, to: number, prefix: string): CompletionRes
 }
 
 function attributeNameCompletions(state: EditorState, node: SyntaxNode, from: number, to: number): CompletionResult | null {
-  const tagName = elementTagName(state, findParentElement(node))
+  const tagName = elementTagName(state, enclosingElement(node))
   if (!isProjectionTag(tagName)) return null
   return {
     from,
@@ -109,7 +90,7 @@ function attributeValueRegion(state: EditorState, node: SyntaxNode, pos: number)
   const nameNode = attributeNode?.getChild('AttributeName')
   if (!attributeNode || !nameNode) return null
   const attribute = state.sliceDoc(nameNode.from, nameNode.to)
-  const tagName = elementTagName(state, findParentElement(attributeNode))
+  const tagName = elementTagName(state, enclosingElement(attributeNode))
   if (node.name === 'Is') {
     return { attribute, tagName, from: pos, text: '', quoteEnd: '"', validFor: /^[^\s<>='"]*$/ }
   }

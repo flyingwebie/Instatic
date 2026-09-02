@@ -13,8 +13,9 @@ Current status: the **shell** (toggle, dock layout, persistence), the
 [`html-import.md`](html-import.md) → "Uid-preserving projection import"), and
 all three panels — **HTML**, **CSS**, **JS** (below) — are implemented,
 including the HTML panel's apply guardrails (destructive-diff confirm,
-stale-draft banner) and the panels' context-aware autocomplete. Reverse
-selection sync lands in a follow-up change.
+stale-draft banner), the panels' context-aware autocomplete, and the HTML
+panel's reverse selection sync (inspector). Everything in the spec is
+implemented.
 
 ## Enabling and entering
 
@@ -339,11 +340,35 @@ data — page scripts are `.js`, so the JS panel is never on that path.)
   `getElementById`. Selection changes update the catalog, never the
   document.
 
-## Planned follow-ups
+## Reverse selection sync
 
-Reverse selection sync from the HTML panel (cursor in a tag → canvas hover
-ring; click on a tag name → selects the node). See `.scratch/god-mode/spec.md`
-for the full design.
+The HTML panel is also an inspector: the projection's `uid` attributes map
+the editor back onto the page tree (`code-editor/uidInspector.ts`, in the
+lazy chunk; `CodeMirrorEditor` props `onCursorUid` / `onTagClick`).
+
+- **Cursor → hover.** As the cursor moves, the editor reports the uid of the
+  nearest enclosing element — open tag, text, or close tag (`uidAtCursor`) —
+  and the panel calls `hoverNode(id)` for it when it is a node of the
+  projected tree: the canvas shows its hover ring in every breakpoint frame
+  (global hover, no breakpoint owner) and the layer panel highlights its row,
+  exactly as a canvas mouse-over would. Only the nearest element counts: a
+  tag typed but not applied (no uid), or a uid the tree does not know, maps
+  to nothing — never to its parent. The highlight clears when the cursor
+  leaves every element or the editor loses focus, and the panel drops a
+  highlight it owns when it unmounts (leaving God Mode). Focus never moves.
+- **Tag click → select.** A click on a tag name, open or close tag
+  (`uidOfTagNameAt`, resolved from the pointer position on release; a click
+  is a press and release without drag, detected from the mouse events
+  because caret placement redraws the line and the browser then synthesises
+  no `click`), calls
+  `selectNode(uid)` — the same action a canvas click ends in — so the layer
+  panel expands and scrolls to the row and both panels re-scope through the
+  normal selection flow (drafts are kept per scope). The re-keyed buffer
+  opens at the top of the selected node's projection. Clicking the tag of
+  the node already selected is a no-op; a drag selection never selects.
+- **Read-only view** (a Component instance's internals on the consumer
+  side) is inert: no hover highlight, no selection from tag clicks — the
+  way in is the "Open component definition" jump.
 
 ## Tests
 
@@ -407,3 +432,9 @@ for the full design.
   alongside.
 - `src/__tests__/god-mode/panelCompletions.test.tsx` — the panels over real
   CodeMirror, completing from the store (loaded data meta included).
+- `src/__tests__/code-editor/uidInspector.test.tsx` — `uidAtCursor` /
+  `uidOfTagNameAt` over the HTML grammar (open/close tag, text, uid-less,
+  outside), and `onCursorUid` reports over a mounted editor.
+- `src/__tests__/god-mode/htmlPanelInspector.test.tsx` — the panel hovers
+  the cursor's node, ignores uid-less and unknown uids, re-scopes on select,
+  stays inert in the read-only view, and drops only its own hover on unmount.

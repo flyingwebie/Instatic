@@ -59,6 +59,7 @@ import { foldLockedRanges, lockedRegions, type LockedRange } from './lockedRegio
 import { uidAttributes } from './uidAttributes'
 import { syntaxDiagnostics } from './syntaxDiagnostics'
 import { contextCompletions } from './contextCompletions'
+import { uidInspector } from './uidInspector'
 import type { EditorCompletionCatalog } from './completionCatalog'
 
 // ---------------------------------------------------------------------------
@@ -167,6 +168,14 @@ interface CodeMirrorEditorProps {
    * live: a new catalog takes effect on the next completion, no remount.
    */
   completions?: EditorCompletionCatalog
+  /**
+   * Reports the `uid` of the element whose markup the cursor is in as it
+   * changes (null for uid-less content, or when the editor loses focus).
+   * For the God Mode HTML projection's reverse selection sync.
+   */
+  onCursorUid?: (uid: string | null) => void
+  /** Reports the `uid` of the element whose tag name was clicked. */
+  onTagClick?: (uid: string) => void
 }
 
 const rejectAllChanges = EditorState.changeFilter.of(() => false)
@@ -335,6 +344,8 @@ export default function CodeMirrorEditor({
   foldUidAttributes = false,
   onSubmit,
   completions,
+  onCursorUid,
+  onTagClick,
 }: CodeMirrorEditorProps) {
   const containerRef = useRef<HTMLDivElement | null>(null)
   const viewRef = useRef<EditorView | null>(null)
@@ -369,6 +380,16 @@ export default function CodeMirrorEditor({
     completionsRef.current = completions
   }, [completions])
   const getCompletions = () => completionsRef.current ?? null
+  const onCursorUidRef = useRef(onCursorUid)
+  const onTagClickRef = useRef(onTagClick)
+  useEffect(() => {
+    onCursorUidRef.current = onCursorUid
+    onTagClickRef.current = onTagClick
+  }, [onCursorUid, onTagClick])
+  const inspectorHandlers = () => ({
+    onCursorUid: (uid: string | null) => onCursorUidRef.current?.(uid),
+    onTagClick: (uid: string) => onTagClickRef.current?.(uid),
+  })
 
   // useCallback kept: stable identity for the [flush] useEffect dep array (exhaustive-deps).
   // Flush pending content to the store immediately (called on doc switch).
@@ -424,6 +445,7 @@ export default function CodeMirrorEditor({
               ]
             : []),
           ...(completions ? [contextCompletions(getCompletions)] : []),
+          ...(onCursorUid || onTagClick ? [uidInspector(inspectorHandlers)] : []),
           readableSyntaxHighlighting,
           editorTheme,
           ...(lockedRanges.length > 0 ? [lockedRegions(lockedRanges)] : []),

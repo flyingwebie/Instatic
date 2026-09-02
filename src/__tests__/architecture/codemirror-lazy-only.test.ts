@@ -91,6 +91,7 @@ const LAZY_CHUNK_HELPERS = [
   'cssContextCompletions.ts',
   'jsContextCompletions.ts',
   'syntaxNode.ts',
+  'uidInspector.ts',
 ]
 const LAZY_CHUNK_MODULES = new Set([
   LAZY_CHUNK_ENTRY,
