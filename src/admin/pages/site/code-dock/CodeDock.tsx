@@ -272,7 +272,7 @@ export function CodeDock({ runtimeValidation }: CodeDockProps) {
       ) : visiblePanels.length > 0 ? (
         <div className={styles.columns}>
           {visiblePanels.map((panel, index) => (
-            <div key={panel.id} className={styles.columnGroup}>
+            <div key={panel.id} className={cn(styles.columnGroup, styles[`columnGroup_${panel.id}`])}>
               {index > 0 && (
                 <div
                   className={styles.columnDivider}
@@ -329,7 +329,7 @@ function CodeDockPanel({
 }: CodeDockProps & { id: CodeDockPanelId; label: string; expanded: boolean; onExpand: () => void }) {
   return (
     <section
-      className={cn(styles.column, styles[`column_${id}`])}
+      className={styles.column}
       aria-label={`${label} panel`}
       data-testid={`code-dock-panel-${id}`}
     >

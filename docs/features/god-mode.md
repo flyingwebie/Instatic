@@ -62,8 +62,9 @@ outlives the entitlement (preference turned off, capability revoked), an effect 
 
 - **Columns** — HTML | CSS | JS side by side. Header buttons toggle each column's
   visibility; the visible dividers between columns (a 1px line in a 7px grab
-  area, accent-coloured while dragging) drag to redistribute width (stored as
-  flex weights); the top edge drags to resize the dock height (clamped
+  area, highlighted while dragging) drag to redistribute width — the flex
+  weights size each column GROUP (divider + panel), and the panel fills its
+  group; the top edge drags to resize the dock height (clamped
   `CODE_DOCK_MIN_HEIGHT`–`CODE_DOCK_MAX_HEIGHT`). Both resize gestures write CSS
   custom properties imperatively during the drag and commit to the store once on
   pointer-up, so the layout-persistence subscriber writes localStorage once per

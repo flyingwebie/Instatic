@@ -49,8 +49,23 @@
 
 .columnGroup {
   display: flex;
-  flex: 1;
+  flex: 1 1 0;
   min-width: 0;
+}
+
+/* Per-column flex weights, driven by uiSlice via CSS custom properties
+   (updated imperatively during divider drags, committed on pointer-up).
+   They size the GROUP (divider + panel); the panel fills its group. */
+.columnGroup_html {
+  flex-grow: var(--code-dock-weight-html);
+}
+
+.columnGroup_css {
+  flex-grow: var(--code-dock-weight-css);
+}
+
+.columnGroup_js {
+  flex-grow: var(--code-dock-weight-js);
 }
 
 .column {
@@ -59,20 +74,6 @@
   flex: 1 1 0;
   min-width: 0;
   min-height: 0;
-}
-
-/* Per-column flex weights, driven by uiSlice via CSS custom properties
-   (updated imperatively during divider drags, committed on pointer-up). */
-.column_html {
-  flex-grow: var(--code-dock-weight-html);
-}
-
-.column_css {
-  flex-grow: var(--code-dock-weight-css);
-}
-
-.column_js {
-  flex-grow: var(--code-dock-weight-js);
 }
 
 .columnDivider {
