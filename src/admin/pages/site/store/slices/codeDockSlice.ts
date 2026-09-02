@@ -14,6 +14,16 @@ export const CODE_DOCK_PANEL_IDS: readonly CodeDockPanelId[] = ['html', 'css', '
 export const CODE_DOCK_MIN_HEIGHT = 120
 export const CODE_DOCK_MAX_HEIGHT = 800
 export const CODE_DOCK_DEFAULT_HEIGHT = 280
+/**
+ * Below this a column would read as gone even before the CSS minimum width
+ * catches it, so weights are floored here (and at restore) and a column
+ * shown again starts from an equal share.
+ */
+export const CODE_DOCK_MIN_COLUMN_WEIGHT = 0.2
+
+export function clampCodeDockColumnWeight(weight: number): number {
+  return Math.max(CODE_DOCK_MIN_COLUMN_WEIGHT, weight)
+}
 
 export function isCodeDockPanelId(value: unknown): value is CodeDockPanelId {
   return value === 'html' || value === 'css' || value === 'js'
@@ -88,7 +98,11 @@ export const createCodeDockSlice: EditorStoreSliceCreator<CodeDockSlice> = (set,
 
   toggleCodeDockPanel: (panel) =>
     set((state) => {
-      state.codeDockPanels[panel] = !state.codeDockPanels[panel]
+      const show = !state.codeDockPanels[panel]
+      state.codeDockPanels[panel] = show
+      // A column that was dragged down to its minimum comes back at an
+      // equal share, not as a sliver.
+      if (show && state.codeDockColumnWeights[panel] < 1) state.codeDockColumnWeights[panel] = 1
     }),
 
   setCodeDockActiveTab: (panel) => {
@@ -101,7 +115,11 @@ export const createCodeDockSlice: EditorStoreSliceCreator<CodeDockSlice> = (set,
       (panel) => Number.isFinite(weights[panel]) && weights[panel] > 0,
     )
     if (!valid) return
-    set({ codeDockColumnWeights: { ...weights } })
+    set({
+      codeDockColumnWeights: Object.fromEntries(
+        CODE_DOCK_PANEL_IDS.map((panel) => [panel, clampCodeDockColumnWeight(weights[panel])]),
+      ) as CodeDockColumnWeights,
+    })
   },
 
   setCodeDockDraft: (key, draft) => {

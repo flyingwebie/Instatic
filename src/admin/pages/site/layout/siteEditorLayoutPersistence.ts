@@ -13,6 +13,7 @@ import {
   type CodeDockColumnWeights,
   type CodeDockPanelId,
   type CodeDockPanelVisibility,
+  clampCodeDockColumnWeight,
 } from '@site/store/slices/codeDockSlice'
 import {
   readWorkspaceLayout,
@@ -224,7 +225,10 @@ function storedCodeDockWeights(
   // Always build a fresh object: `current` may be a Mutative draft proxy that
   // is revoked when the recipe returns (this runs inside a rawReturn recipe).
   return Object.fromEntries(
-    CODE_DOCK_PANEL_IDS.map((panel) => [panel, valid ? value[panel] : current[panel]]),
+    CODE_DOCK_PANEL_IDS.map((panel) => [
+      panel,
+      valid ? clampCodeDockColumnWeight(value[panel] as number) : current[panel],
+    ]),
   ) as CodeDockColumnWeights
 }
 

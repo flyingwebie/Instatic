@@ -19,6 +19,7 @@ import {
 import {
   CODE_DOCK_MIN_HEIGHT,
   CODE_DOCK_MAX_HEIGHT,
+  CODE_DOCK_MIN_COLUMN_WEIGHT,
 } from '@site/store/slices/codeDockSlice'
 import { PREFERENCE_CATALOG } from '@site/preferences/catalog'
 import { getGodModeCommands } from '@admin/spotlight/commands/godMode'
@@ -68,7 +69,8 @@ describe('uiSlice — god mode + code dock state', () => {
     expect(useEditorStore.getState().codeDockHeight).toBe(300)
   })
 
-  it('toggleCodeDockPanel hides and shows a single column', () => {
+  it('toggleCodeDockPanel hides and shows a single column, restoring a squeezed column to an equal share', () => {
+    useEditorStore.getState().setCodeDockColumnWeights({ html: 1.5, css: 0.3, js: 1.2 })
     useEditorStore.getState().toggleCodeDockPanel('css')
     expect(useEditorStore.getState().codeDockPanels).toEqual({
       html: true,
@@ -77,6 +79,14 @@ describe('uiSlice — god mode + code dock state', () => {
     })
     useEditorStore.getState().toggleCodeDockPanel('css')
     expect(useEditorStore.getState().codeDockPanels.css).toBe(true)
+    expect(useEditorStore.getState().codeDockColumnWeights).toEqual({ html: 1.5, css: 1, js: 1.2 })
+  })
+
+  it('setCodeDockColumnWeights floors each weight so no column can vanish', () => {
+    useEditorStore.getState().setCodeDockColumnWeights({ html: 2, css: 0.001, js: 1 })
+    expect(useEditorStore.getState().codeDockColumnWeights).toEqual({ html: 2, css: CODE_DOCK_MIN_COLUMN_WEIGHT, js: 1 })
+    useEditorStore.getState().setCodeDockColumnWeights({ html: 0, css: 1, js: 1 })
+    expect(useEditorStore.getState().codeDockColumnWeights).toEqual({ html: 2, css: CODE_DOCK_MIN_COLUMN_WEIGHT, js: 1 })
   })
 
   it('setCodeDockActiveTab switches the narrow-mode tab', () => {

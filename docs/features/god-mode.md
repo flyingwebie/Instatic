@@ -60,11 +60,16 @@ outlives the entitlement (preference turned off, capability revoked), an effect 
 
 ## Code Dock layout
 
-- **Columns** — HTML | CSS | JS side by side. Header buttons toggle each column's
-  visibility; the visible dividers between columns (a 1px line in a 7px grab
-  area, highlighted while dragging) drag to redistribute width — the flex
-  weights size each column GROUP (divider + panel), and the panel fills its
-  group; the top edge drags to resize the dock height (clamped
+- **Columns** — HTML | CSS | JS side by side. The header's toggle group (a
+  check mark on each shown panel) hides and shows columns; the visible
+  dividers between columns (a 1px line in a 7px grab area, highlighted while
+  dragging) drag to redistribute width — the flex weights size each column
+  GROUP (divider + panel), and the panel fills its group. A column can never
+  be dragged out of existence: `MIN_COLUMN_WIDTH` (280px) is the drag floor,
+  the group's CSS `min-width` (`--code-dock-column-min`), and the tab-fallback
+  threshold; stored weights are floored (`CODE_DOCK_MIN_COLUMN_WEIGHT`, also
+  at restore) and a column shown again returns at an equal share. The top
+  edge drags to resize the dock height (clamped
   `CODE_DOCK_MIN_HEIGHT`–`CODE_DOCK_MAX_HEIGHT`). Both resize gestures write CSS
   custom properties imperatively during the drag and commit to the store once on
   pointer-up, so the layout-persistence subscriber writes localStorage once per

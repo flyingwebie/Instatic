@@ -1,4 +1,6 @@
 .dock {
+  /* Overridden from the dock element (MIN_COLUMN_WIDTH); default for CSS alone. */
+  --code-dock-column-min: 280px;
   position: relative;
   flex: none;
   display: flex;
@@ -35,10 +37,27 @@
   border-bottom: 1px solid var(--border-subtle);
 }
 
-.panelButtons {
+.panelToggles {
   display: flex;
   align-items: center;
+  gap: 1px;
+  padding: 1px;
+  border-radius: var(--editor-radius);
+  background: var(--overlay-10);
+}
+
+.panelToggle {
   gap: var(--space-4xs);
+}
+
+.panelToggle[aria-pressed='false'] .panelToggleMark,
+.panelToggle[aria-selected='false'] .panelToggleMark {
+  visibility: hidden;
+}
+
+.panelToggle[aria-pressed='false'],
+.panelToggle[aria-selected='false'] {
+  color: var(--text-muted);
 }
 
 .columns {
@@ -50,7 +69,9 @@
 .columnGroup {
   display: flex;
   flex: 1 1 0;
-  min-width: 0;
+  /* A column can be dragged down to this, never out of existence; when
+     the visible columns cannot all fit, the dock falls back to tabs. */
+  min-width: var(--code-dock-column-min);
 }
 
 /* Per-column flex weights, driven by uiSlice via CSS custom properties

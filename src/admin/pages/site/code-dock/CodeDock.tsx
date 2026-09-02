@@ -28,6 +28,7 @@ import {
 import { Button } from '@ui/components/Button'
 import { Dialog } from '@ui/components/Dialog'
 import { ArrowsScaleIcon } from 'pixel-art-icons/icons/arrows-scale'
+import { CheckIcon } from 'pixel-art-icons/icons/check'
 import { cn } from '@ui/cn'
 import { HtmlPanel } from './html'
 import { CssPanel } from './css'
@@ -41,10 +42,12 @@ const PANELS: ReadonlyArray<{ id: CodeDockPanelId; label: string }> = [
   { id: 'js', label: 'JS' },
 ]
 
-/** Below this per-column width the dock switches to tabbed mode. */
+/**
+ * A column's minimum width: a divider drag stops here, the column group's
+ * CSS `min-width` holds it, and when the visible columns cannot all fit at
+ * it the dock switches to tabbed mode.
+ */
 const MIN_COLUMN_WIDTH = 280
-/** Floor for a column during a divider drag, in px. */
-const MIN_DRAG_COLUMN_WIDTH = 160
 const KEYBOARD_RESIZE_STEP = 16
 
 /**
@@ -182,8 +185,8 @@ export function CodeDock({ runtimeValidation }: CodeDockProps) {
       (move) => {
         const delta = move.clientX - startX
         const leftPx = Math.min(
-          pairPx - MIN_DRAG_COLUMN_WIDTH,
-          Math.max(MIN_DRAG_COLUMN_WIDTH, startLeftPx + delta),
+          pairPx - MIN_COLUMN_WIDTH,
+          Math.max(MIN_COLUMN_WIDTH, startLeftPx + delta),
         )
         liveWeights = {
           ...weights,
@@ -203,6 +206,7 @@ export function CodeDock({ runtimeValidation }: CodeDockProps) {
 
   const weightStyle = {
     '--code-dock-height': `${height}px`,
+    '--code-dock-column-min': `${MIN_COLUMN_WIDTH}px`,
     '--code-dock-weight-html': weights.html,
     '--code-dock-weight-css': weights.css,
     '--code-dock-weight-js': weights.js,
@@ -229,24 +233,39 @@ export function CodeDock({ runtimeValidation }: CodeDockProps) {
       />
 
       <header className={styles.header}>
-        <div className={styles.panelButtons} role={tabbed ? 'tablist' : undefined}>
-          {PANELS.map((panel) => (
-            <Button
-              key={panel.id}
-              variant="ghost"
-              size="xs"
-              pressed={tabbed ? activeTab === panel.id : panels[panel.id]}
-              role={tabbed ? 'tab' : undefined}
-              aria-selected={tabbed ? activeTab === panel.id : undefined}
-              tooltip={tabbed ? `Show ${panel.label}` : `Show or hide the ${panel.label} panel`}
-              onClick={() =>
-                tabbed ? setCodeDockActiveTab(panel.id) : toggleCodeDockPanel(panel.id)
-              }
-              data-testid={`code-dock-toggle-${panel.id}`}
-            >
-              {panel.label}
-            </Button>
-          ))}
+        <div
+          className={styles.panelToggles}
+          role={tabbed ? 'tablist' : 'group'}
+          aria-label={tabbed ? 'Code panel' : 'Visible code panels'}
+        >
+          {PANELS.map((panel) => {
+            const on = tabbed ? activeTab === panel.id : panels[panel.id]
+            return (
+              <Button
+                key={panel.id}
+                variant="secondary"
+                size="xs"
+                className={styles.panelToggle}
+                pressed={tabbed ? undefined : on}
+                role={tabbed ? 'tab' : undefined}
+                aria-selected={tabbed ? on : undefined}
+                tooltip={
+                  tabbed
+                    ? `Show the ${panel.label} panel`
+                    : on
+                      ? `Hide the ${panel.label} panel`
+                      : `Show the ${panel.label} panel`
+                }
+                onClick={() =>
+                  tabbed ? setCodeDockActiveTab(panel.id) : toggleCodeDockPanel(panel.id)
+                }
+                data-testid={`code-dock-toggle-${panel.id}`}
+              >
+                <CheckIcon size={10} className={styles.panelToggleMark} aria-hidden="true" />
+                {panel.label}
+              </Button>
+            )
+          })}
         </div>
         <Button
           variant="ghost"
