@@ -199,6 +199,7 @@ Schema source of truth: `src/core/files/schemas.ts`.
 
 - `'style'` files are concatenated into the page-scoped `userStyles` bundle via `userStylesheets.ts`, honouring each stylesheet's `SiteRuntimeConfig.styles[id]` (enable / scope / priority).
 - `'script'` files are exposed to module render functions through `props._siteScripts`.
+- A **page script** is a `'script'` file whose runtime scope targets exactly one page (`findPageScript` / `pageScriptRuntimeConfig` in `@core/site-runtime`); God Mode's JS panel creates one lazily at `scripts/pages/<slug>.js` (see [`god-mode.md`](god-mode.md) → "JS panel").
 - `'component'`, `'config'`, and `'doc'` files are stored but not auto-emitted; modules can read them via `ctx.siteFiles`.
 - `'asset'` files store binary content in `blob` (base64-encoded); the file's `content` field is absent.
 

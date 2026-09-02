@@ -152,7 +152,7 @@ export function AdminCanvasEditorBody({
           is a column flex, so this lands under sidebars + canvas). */}
       {showCodeDock && (
         <Suspense fallback={null}>
-          <CodeDock />
+          <CodeDock runtimeValidation={runtimeValidation} />
         </Suspense>
       )}
 

@@ -12,19 +12,18 @@
  *
  * The editor is only remounted when the projected document changes for a
  * reason other than this panel's own apply (selection change, canvas undo,
- * a co-editor's edit): a store subscription compares each new projection
- * against the text the mounted editor was opened with (or that the panel's
- * own last apply produced) and re-keys the editor on a mismatch.
+ * a co-editor's edit) — see `useDocumentSync`.
  */
-import { lazy, Suspense, useEffect, useRef, useState } from 'react'
+import { lazy, Suspense, useState } from 'react'
 import { useShallow } from 'zustand/react/shallow'
 import { planStylesheetEdit } from '@core/cssProjection'
 import { useEditorStore } from '@site/store/store'
 import { findRenderedCanvasNodeElement } from '@site/canvas/canvasNodeLookup'
 import type { EditorChangeInfo } from '@site/code-editor/CodeMirrorEditor'
 import { cn } from '@ui/cn'
+import { useDocumentSync, type DocumentSyncSource } from '../useDocumentSync'
 import { deriveCssPanelDocument, type CssPanelCanvas, type CssPanelDocument, type CssPanelInputs } from './cssPanelDocument'
-import styles from './CssPanel.module.css'
+import styles from '../EditorColumn.module.css'
 
 const CodeMirrorEditor = lazy(() => import('@site/code-editor/CodeMirrorEditor'))
 
@@ -61,13 +60,17 @@ function statusText(status: PanelStatus): string {
   }
 }
 
-function shallowEqualInputs(a: CssPanelInputs, b: CssPanelInputs): boolean {
-  return (
+const syncSource: DocumentSyncSource<CssPanelInputs> = {
+  select: selectInputs,
+  equal: (a, b) =>
     a.site === b.site
     && a.activeDocument === b.activeDocument
     && a.activePageId === b.activePageId
-    && a.selectedNodeId === b.selectedNodeId
-  )
+    && a.selectedNodeId === b.selectedNodeId,
+  read: (inputs) => {
+    const next = deriveCssPanelDocument(inputs, canvas)
+    return next ? { docKey: next.docKey, text: next.projection.text } : null
+  },
 }
 
 export function CssPanel() {
@@ -77,34 +80,7 @@ export function CssPanel() {
   // Status is remembered with the scope it belongs to, so a scope change
   // resets it without an effect.
   const [scopedStatus, setScopedStatus] = useState<{ docKey: string; status: PanelStatus } | null>(null)
-  const [revision, setRevision] = useState(0)
-  // Baseline of the mounted editor: the scope it was opened for and the
-  // projection text it was opened with (or that this panel's own last apply
-  // produced). A store change projecting a different text for the SAME scope
-  // is an external change and re-keys the editor.
-  const syncedRef = useRef<{ docKey: string; text: string } | null>(null)
-  const applyingRef = useRef(false)
-
-  useEffect(() => {
-    const read = () => {
-      const next = deriveCssPanelDocument(selectInputs(useEditorStore.getState()), canvas)
-      return next ? { docKey: next.docKey, text: next.projection.text } : null
-    }
-    syncedRef.current = read()
-    let previous = selectInputs(useEditorStore.getState())
-    return useEditorStore.subscribe((state) => {
-      const current = selectInputs(state)
-      if (shallowEqualInputs(previous, current)) return
-      previous = current
-      if (applyingRef.current) return
-      const next = read()
-      const synced = syncedRef.current
-      syncedRef.current = next
-      if (next && synced && next.docKey === synced.docKey && next.text !== synced.text) {
-        setRevision((r) => r + 1)
-      }
-    })
-  }, [])
+  const { revision, runOwnWrite } = useDocumentSync(syncSource)
 
   const docKey = document ? `${document.docKey}#${revision}` : null
   const status: PanelStatus =
@@ -120,16 +96,7 @@ export function CssPanel() {
       return
     }
     const plan = planStylesheetEdit({ text, projection: document.projection, breakpoints: document.breakpoints })
-    applyingRef.current = true
-    let result
-    try {
-      result = applyStylesheetEdit(plan.edit)
-    } finally {
-      applyingRef.current = false
-    }
-    // Our own apply is not an external change — remember what it projects.
-    const projected = deriveCssPanelDocument(selectInputs(useEditorStore.getState()), canvas)
-    syncedRef.current = projected ? { docKey: projected.docKey, text: projected.projection.text } : null
+    const result = runOwnWrite(() => applyStylesheetEdit(plan.edit))
     const blocked = [...new Set([...plan.blockedSelectors, ...result.blockedSelectors])]
     if (blocked.length > 0) setStatus({ kind: 'blocked', selectors: blocked })
     else if (plan.warnings.length > 0) setStatus({ kind: 'warning', message: plan.warnings[0] })

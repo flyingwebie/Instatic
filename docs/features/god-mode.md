@@ -10,9 +10,10 @@ Current status: the **shell** (toggle, dock layout, persistence), the
 **editable HTML projection render** (`RenderConfig.projection`, see
 [`publisher.md`](publisher.md) → "Editable HTML projection"), the
 **uid-preserving HTML import** (`importProjectionHtml`, see
-[`html-import.md`](html-import.md) → "Uid-preserving projection import"), and
-the **CSS panel** (below) are implemented. The HTML and JS panels are
-placeholders; their editors and autocomplete land in follow-up changes.
+[`html-import.md`](html-import.md) → "Uid-preserving projection import"), the
+**CSS panel** and the **JS panel** (below) are implemented. The HTML panel is
+a placeholder; its editor and the panels' autocomplete land in follow-up
+changes.
 
 ## Enabling and entering
 
@@ -147,13 +148,48 @@ produced and re-keys the editor when the store projects something else. Undo
 with focus in the panel is CodeMirror's text history; undo in the canvas or
 layer panel is tree undo, which re-syncs the panel.
 
+## JS panel
+
+The JS column (`src/admin/pages/site/code-dock/js/`) edits the **page
+script**: an ordinary script code asset scoped to exactly the current page.
+Nothing else marks it — it is found by its runtime config
+(`findPageScript` in `@core/site-runtime`: a `type: 'script'` file whose
+scope is `{ type: 'pages', pageIds: [<this page>] }`; several qualify → the
+one that loads first, ascending priority then path). It shows in the Explorer
+Code tab like any script, its settings (scope, placement, timing, canvas) stay
+editable there, and it rides the existing build/inject pipeline
+(`collectRuntimeScripts`), so it runs in the canvas and on the published page
+with no new publish path.
+
+- **Lazy creation** — no asset exists until the first real edit. The first
+  non-empty flush calls `createPageScript(pageId, content)` (file slice): one
+  `mutateSiteState` recipe adds `scripts/pages/<slug>.js` (`pageScriptPath`,
+  stepping past an occupied path with `-2`, `-3`, …) AND its page-only
+  runtime config to both the persisted `site.runtime` and the store mirror
+  (`writeSiteRuntimeDraft`, the one place every runtime writer goes
+  through), so file + scope are one undo step and the Code tab settings
+  agree at once.
+- **Saves** — live-debounced (250 ms, `JS_PANEL_SAVE_DELAY_MS`) through
+  `updateFileContent`, the same path the Code editor panel uses; the compiler
+  diagnostics for the file (`fileRuntimeDiagnostics`, shared with that panel)
+  show inline, threaded down as `runtimeValidation` from the canvas layout.
+  Language follows the file's path (`fileLanguage`, shared with the Code
+  editor panel); `.ts` page scripts get the TypeScript language service.
+- **Scope** — follows the active page, never the element selection; in
+  Visual Component canvas mode the panel shows an empty state (a VC has no
+  page script).
+- **Sync** — page switches re-key the buffer; the editor's flush-on-switch
+  lands a pending edit on the page it was typed for. External content
+  changes (undo, the Code editor panel, a co-editor) re-sync the buffer via
+  the same `useDocumentSync` hook the CSS panel uses (`code-dock/
+  useDocumentSync.ts`).
+
 ## Planned panel semantics (follow-up tickets)
 
-The HTML panel renders/edits the page tree via the uid-preserving import; the
-JS panel edits a page-scoped script code asset. Selection in the layer panel
-scopes all views; autocomplete covers tags, classes, published-site CSS
-variables, and dynamic-data tokens. See `.scratch/god-mode/spec.md` for the
-full design.
+The HTML panel renders/edits the page tree via the uid-preserving import.
+Selection in the layer panel scopes the HTML and CSS views; autocomplete
+covers tags, classes, published-site CSS variables, and dynamic-data tokens.
+See `.scratch/god-mode/spec.md` for the full design.
 
 ## Tests
 
@@ -183,3 +219,10 @@ full design.
   without auto-assignment, selection swaps.
 - `src/__tests__/code-editor/lockedRegions.test.tsx` — locked ranges reject
   edits, fold on mount, and syntax error counts ride along with changes.
+- `src/__tests__/site-runtime/pageScript.test.ts` — page-script resolution
+  (exact page scope, load-order tie-break, `scripts/pages/<slug>.js` naming).
+- `src/__tests__/editor-store/pageScriptActions.test.ts` — `createPageScript`
+  as one undo step; the script runs for its page only in canvas and publish.
+- `src/__tests__/god-mode/jsPanel.test.tsx` — the panel over real
+  CodeMirror: lazy creation on first edit, live saves, selection-independent,
+  page switch with flushed pending edit, undo re-sync.

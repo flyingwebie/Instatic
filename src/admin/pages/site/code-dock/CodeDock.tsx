@@ -3,8 +3,8 @@
  * panels: layout, per-column show/hide, column and height resizing,
  * narrow-window tab fallback, and layout persistence (via the uiSlice fields
  * projected by siteEditorLayoutPersistence). The CSS column hosts the live
- * style-rule editor (`./css`); HTML and JS are placeholders until their
- * tickets land.
+ * style-rule editor (`./css`), the JS column the page-script editor
+ * (`./js`); HTML is a placeholder until its ticket lands.
  *
  * Resize model (matches SidebarResizeHandle's): pointer drags write CSS
  * custom properties on the dock element imperatively for a 60fps live drag,
@@ -22,6 +22,8 @@ import {
 import { Button } from '@ui/components/Button'
 import { cn } from '@ui/cn'
 import { CssPanel } from './css'
+import { JsPanel } from './js'
+import type { RuntimeScriptValidationState } from '@site/hooks/useRuntimeScriptDiagnostics'
 import styles from './CodeDock.module.css'
 
 const PANELS: ReadonlyArray<{ id: CodeDockPanelId; label: string }> = [
@@ -62,7 +64,12 @@ function trackPointerDrag(
   handle.addEventListener('pointercancel', onCancel)
 }
 
-export function CodeDock() {
+interface CodeDockProps {
+  /** Compiler diagnostics for site scripts, shown inline by the JS panel. */
+  runtimeValidation?: RuntimeScriptValidationState
+}
+
+export function CodeDock({ runtimeValidation }: CodeDockProps) {
   const dockRef = useRef<HTMLDivElement | null>(null)
   const height = useEditorStore((s) => s.codeDockHeight)
   const panels = useEditorStore((s) => s.codeDockPanels)
@@ -244,6 +251,7 @@ export function CodeDock() {
           <CodeDockPanel
             id={activeTab}
             label={PANELS.find((p) => p.id === activeTab)?.label ?? activeTab}
+            runtimeValidation={runtimeValidation}
           />
         </div>
       ) : visiblePanels.length > 0 ? (
@@ -261,7 +269,7 @@ export function CodeDock() {
                   }
                 />
               )}
-              <CodeDockPanel id={panel.id} label={panel.label} />
+              <CodeDockPanel id={panel.id} label={panel.label} runtimeValidation={runtimeValidation} />
             </div>
           ))}
         </div>
@@ -272,7 +280,11 @@ export function CodeDock() {
   )
 }
 
-function CodeDockPanel({ id, label }: { id: CodeDockPanelId; label: string }) {
+function CodeDockPanel({
+  id,
+  label,
+  runtimeValidation,
+}: CodeDockProps & { id: CodeDockPanelId; label: string }) {
   return (
     <section
       className={cn(styles.column, styles[`column_${id}`])}
@@ -282,6 +294,8 @@ function CodeDockPanel({ id, label }: { id: CodeDockPanelId; label: string }) {
       <div className={styles.columnTitle}>{label}</div>
       {id === 'css' ? (
         <CssPanel />
+      ) : id === 'js' ? (
+        <JsPanel runtimeValidation={runtimeValidation} />
       ) : (
         <div className={styles.columnBody}>
           <p className={styles.placeholder}>The {label} editor lands in an upcoming God Mode update.</p>
