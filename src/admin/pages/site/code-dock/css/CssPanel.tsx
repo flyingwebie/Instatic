@@ -17,7 +17,7 @@
  * restored when the same document mounts again, so expanding the panel or
  * the tab fallback cannot lose it.
  */
-import { lazy, Suspense, useRef, useState } from 'react'
+import { lazy, Suspense, useDeferredValue, useRef, useState } from 'react'
 import { useShallow } from 'zustand/react/shallow'
 import { planStylesheetEdit } from '@core/cssProjection'
 import { useEditorStore } from '@site/store/store'
@@ -70,7 +70,9 @@ const syncSource: DocumentSyncSource<SelectionScopeInputs> = {
 }
 
 export function CssPanel() {
-  const inputs = useEditorStore(useShallow(selectSelectionScope))
+  // Deferred: the page-scope stylesheet is derived once a burst of store
+  // changes settles, not per change.
+  const inputs = useDeferredValue(useEditorStore(useShallow(selectSelectionScope)))
   const applyStylesheetEdit = useEditorStore((s) => s.applyStylesheetEdit)
   const setCodeDockDraft = useEditorStore((s) => s.setCodeDockDraft)
   const storedDrafts = useEditorStore((s) => s.codeDockDrafts)

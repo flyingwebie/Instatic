@@ -41,7 +41,7 @@
  * tag name (`onTagClick`) selects the node. The read-only view is inert.
  * Focus stays in the editor throughout.
  */
-import { lazy, Suspense, useEffect, useRef, useState } from 'react'
+import { lazy, Suspense, useDeferredValue, useEffect, useRef, useState } from 'react'
 import { useShallow } from 'zustand/react/shallow'
 import { importProjectionHtml, type ProjectionImportResult } from '@core/htmlImport'
 import { registry } from '@core/module-engine'
@@ -166,7 +166,9 @@ function breadcrumbTrail(tree: NodeTree<PageNode>, nodeId: string): PageNode[] {
 }
 
 export function HtmlPanel() {
-  const inputs = useEditorStore(useShallow(selectSelectionScope))
+  // Deferred: during a burst of store changes (a collab load, an agent
+  // batch) the expensive projection is derived once the burst settles.
+  const inputs = useDeferredValue(useEditorStore(useShallow(selectSelectionScope)))
   const applyProjectionImport = useEditorStore((s) => s.applyProjectionImport)
   const setActiveDocument = useEditorStore((s) => s.setActiveDocument)
   const hoverNode = useEditorStore((s) => s.hoverNode)

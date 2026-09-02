@@ -11,6 +11,13 @@
  * write produced, and bumps `revision` on a mismatch for the same document.
  * Wrap every own write in `runOwnWrite` so its store notifications are
  * ignored and the post-write projection becomes the new baseline.
+ *
+ * Projecting is expensive (a whole page's HTML or stylesheet), and the
+ * store can change hundreds of times in one task — a collab document
+ * loading node by node, an agent batch. Reads are therefore coalesced to
+ * one per animation frame, against the latest state; re-projecting on
+ * every notification allocated a full document per node and could exhaust
+ * the renderer on a large site.
  */
 import { useEffect, useRef, useState } from 'react'
 import { useEditorStore } from '@site/store/store'
@@ -63,18 +70,28 @@ export function useDocumentSync<I>(
     const read = () => source.read(source.select(useEditorStore.getState()))
     syncedRef.current = read()
     let previous = source.select(useEditorStore.getState())
-    return useEditorStore.subscribe((state) => {
-      const current = source.select(state)
-      if (source.equal(previous, current)) return
-      previous = current
-      if (writingRef.current) return
+    let frame: number | null = null
+    const compare = () => {
+      frame = null
       const next = read()
       const synced = syncedRef.current
       syncedRef.current = next
       if (next && synced && next.docKey === synced.docKey && next.text !== synced.text && !holdRef.current) {
         setRevision((r) => r + 1)
       }
+    }
+    const unsubscribe = useEditorStore.subscribe((state) => {
+      const current = source.select(state)
+      if (source.equal(previous, current)) return
+      previous = current
+      if (writingRef.current) return
+      // Coalesce: one projection per frame, whatever the burst.
+      frame ??= requestAnimationFrame(compare)
     })
+    return () => {
+      unsubscribe()
+      if (frame !== null) cancelAnimationFrame(frame)
+    }
   }, [source])
 
   const runOwnWrite = <T,>(write: () => T): T => {

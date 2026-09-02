@@ -10,7 +10,7 @@
  * the published page, and it stays editable in the Explorer Code tab. The
  * panel follows the active page, never the element selection.
  */
-import { lazy, Suspense, useRef } from 'react'
+import { lazy, Suspense, useDeferredValue, useRef } from 'react'
 import { useShallow } from 'zustand/react/shallow'
 import { findPageScript, pageScriptPath } from '@core/site-runtime'
 import type { SiteFile } from '@core/files/schemas'
@@ -73,7 +73,7 @@ const syncSource: DocumentSyncSource<JsPanelInputs> = {
 }
 
 export function JsPanel({ runtimeValidation }: { runtimeValidation?: RuntimeScriptValidationState }) {
-  const inputs = useEditorStore(useShallow(selectInputs))
+  const inputs = useDeferredValue(useEditorStore(useShallow(selectInputs)))
   const createPageScript = useEditorStore((s) => s.createPageScript)
   const updateFileContent = useEditorStore((s) => s.updateFileContent)
   // The selection only shapes completions (the selected element's classes

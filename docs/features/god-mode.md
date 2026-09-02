@@ -157,7 +157,13 @@ projection of the current selection, applied back to the tree as you type.
   (canvas undo, a co-editor) through the shared `useDocumentSync`, with no
   banner; a dirty scope keeps its draft verbatim and its buffer mounted
   (`holdRemounts`), so caret and text history survive every store change —
-  including the remote ones the stale banner reports.
+  including the remote ones the stale banner reports. Projections are
+  expensive on a large page, so `useDocumentSync` coalesces its reads to one
+  per animation frame against the latest state, and the panels derive from
+  `useDeferredValue`d inputs: a burst of hundreds of store changes in one
+  task (a collab document loading node by node, an agent batch) costs one
+  projection, not one per change. Re-projecting per notification allocated a
+  whole document per node and exhausted the renderer on a real site.
 - **Guardrails** — two, and every other change applies live. Each draft
   records the projection it started from (`baseHtml`), so both are *derived*
   from state rather than tracked by subscriptions:
