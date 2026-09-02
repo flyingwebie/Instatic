@@ -109,6 +109,13 @@ projection of the current selection, applied back to the tree on demand.
   touches the tree while the document has syntax errors (`lintSyntax`
   diagnostics inline, error count in the toolbar), and never in the
   read-only view.
+- **uid marks** — the projection's `uid="…"` attributes are for the import,
+  not the author, so the editor shows each one as a clickable Instatic mark
+  instead of text (`CodeMirrorEditor`'s `foldUidAttributes`,
+  `code-editor/uidAttributes.tsx`): click reveals that uid inline, click
+  again hides it. The text stays in the buffer untouched — the apply path
+  still reads it — and a hidden attribute is an atomic range, so the caret
+  steps over it and a backspace removes it whole.
 - **Drafts** — unapplied edits are kept per scope (keyed by the projected
   document, bounded to the 20 most recent), so changing selection never
   discards them and switching back restores them; the toolbar shows "Unapplied changes" and the apply result

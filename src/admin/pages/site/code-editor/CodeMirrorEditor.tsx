@@ -56,6 +56,7 @@ import type {
 import { renderMarkdownDocumentation } from './markdownDocumentation'
 import { editorTheme, readableSyntaxHighlighting } from './codeMirrorTheme'
 import { foldLockedRanges, lockedRegions, type LockedRange } from './lockedRegions'
+import { uidAttributes } from './uidAttributes'
 import { syntaxDiagnostics } from './syntaxDiagnostics'
 
 // ---------------------------------------------------------------------------
@@ -148,6 +149,12 @@ interface CodeMirrorEditorProps {
   lockedRanges?: readonly LockedRange[]
   /** View-only document: every change is rejected and the surface is not editable. */
   readOnly?: boolean
+  /**
+   * Show every `uid="…"` attribute as a clickable Instatic mark instead of
+   * text (click reveals the uid, click again hides it). The text stays in
+   * the document. For the God Mode HTML projection.
+   */
+  foldUidAttributes?: boolean
   /** Mod-Enter: the pending text is flushed to `onChange`, then this runs. */
   onSubmit?: () => void
 }
@@ -315,6 +322,7 @@ export default function CodeMirrorEditor({
   lintSyntax = false,
   lockedRanges = EMPTY_LOCKED_RANGES,
   readOnly = false,
+  foldUidAttributes = false,
   onSubmit,
 }: CodeMirrorEditorProps) {
   const containerRef = useRef<HTMLDivElement | null>(null)
@@ -403,6 +411,7 @@ export default function CodeMirrorEditor({
           editorTheme,
           ...(lockedRanges.length > 0 ? [lockedRegions(lockedRanges)] : []),
           ...(readOnly ? readOnlyExtensions : []),
+          ...(foldUidAttributes ? [uidAttributes()] : []),
           editorTooltipBoundary,
           lintGutter(),
           EditorView.updateListener.of((update) => {

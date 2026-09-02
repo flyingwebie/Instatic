@@ -366,6 +366,7 @@ export function HtmlPanel() {
             language="html"
             changeDelayMs={0}
             lintSyntax
+            foldUidAttributes
             readOnly={readOnly}
             onChange={onChange}
             onSubmit={apply}
