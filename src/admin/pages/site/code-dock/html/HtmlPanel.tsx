@@ -79,6 +79,8 @@ interface Draft {
 
 interface AppliedReport {
   docKey: string
+  /** The projection the apply produced — the report is shown while it lasts. */
+  html: string
   created: number
   patched: number
   deleted: number
@@ -177,7 +179,7 @@ export function HtmlPanel() {
         ? { kind: 'stale' }
         : dirty
           ? { kind: 'dirty' }
-          : { kind: 'clean', applied: applied?.docKey === docKey ? applied : null }
+          : { kind: 'clean', applied: applied?.docKey === docKey && applied.html === html ? applied : null }
 
   const onChange = (text: string, info: EditorChangeInfo) => {
     setDrafts((current) => {
@@ -225,13 +227,14 @@ export function HtmlPanel() {
       return
     }
     dropDraft(docKey)
+    const fresh = deriveHtmlPanelDocument(selectSelectionScope(useEditorStore.getState()))
     setApplied({
       docKey,
+      html: fresh?.html ?? draft.text,
       created: result.diff.createdIds.length,
       patched: result.diff.patchedIds.length,
       deleted: result.diff.deletedIds.length,
     })
-    const fresh = deriveHtmlPanelDocument(selectSelectionScope(useEditorStore.getState()))
     if (fresh && fresh.html !== draft.text) setBufferRevision((r) => r + 1)
   }
 

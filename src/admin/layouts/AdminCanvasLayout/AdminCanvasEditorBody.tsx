@@ -5,7 +5,7 @@ import {
   useSensor,
   useSensors,
 } from '@dnd-kit/core'
-import { lazy, Suspense, useEffect } from 'react'
+import { lazy, Suspense, useEffect, type CSSProperties } from 'react'
 import { CanvasRoot } from '@admin/pages/site/canvas'
 import { CodeEditorPanel, CodeEditorSkeleton } from '@admin/pages/site/code-editor'
 import { useActiveLivePath } from '@admin/pages/site/hooks/useActiveLivePath'
@@ -151,7 +151,7 @@ export function AdminCanvasEditorBody({
       {/* God Mode Code Dock — bottom region below the editor row (the shell
           is a column flex, so this lands under sidebars + canvas). */}
       {showCodeDock && (
-        <Suspense fallback={null}>
+        <Suspense fallback={<CodeDockLoading />}>
           <CodeDock runtimeValidation={runtimeValidation} />
         </Suspense>
       )}
@@ -176,6 +176,27 @@ export function AdminCanvasEditorBody({
         </Suspense>
       )}
     </>
+  )
+}
+
+/**
+ * Dock-shaped placeholder while the God Mode chunk loads. The dock is a
+ * sizeable lazy chunk (three CodeMirror panels), and on a cold dev-server
+ * load that wait is long enough that an empty fallback reads as "the toggle
+ * did nothing" — the canvas just shrinks. Hold the dock's height and say so.
+ */
+function CodeDockLoading() {
+  const height = useEditorStore((s) => s.codeDockHeight)
+  return (
+    <div
+      className={styles.codeDockLoading}
+      style={{ '--code-dock-height': `${height}px` } as CSSProperties}
+      role="status"
+      aria-live="polite"
+      data-testid="code-dock-loading"
+    >
+      Loading code panels…
+    </div>
   )
 }
 
