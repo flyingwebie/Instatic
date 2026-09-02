@@ -11,10 +11,10 @@ Current status: the **shell** (toggle, dock layout, persistence), the
 [`publisher.md`](publisher.md) → "Editable HTML projection"), the
 **uid-preserving HTML import** (`importProjectionHtml`, see
 [`html-import.md`](html-import.md) → "Uid-preserving projection import"), and
-all three panels — **HTML**, **CSS**, **JS** (below) — are implemented. The
-HTML panel's apply guardrails (destructive-diff confirm, stale-draft banner),
-reverse selection sync, and the panels' autocomplete land in follow-up
-changes.
+all three panels — **HTML**, **CSS**, **JS** (below) — are implemented,
+including the HTML panel's apply guardrails (destructive-diff confirm,
+stale-draft banner). Reverse selection sync and the panels' autocomplete land
+in follow-up changes.
 
 ## Enabling and entering
 
@@ -115,10 +115,45 @@ projection of the current selection, applied back to the tree on demand.
   ("Applied · 2 patched · 1 created"). An apply whose fresh projection differs
   from the typed text re-keys the buffer to the normalised output.
 - **Sync** — a clean scope re-syncs its buffer on external tree changes
-  (canvas undo, a co-editor) through the shared `useDocumentSync`; a dirty
-  scope keeps its draft verbatim and its buffer mounted (`holdRemounts`),
-  so caret and text history survive unrelated store changes. The
-  stale-draft banner and the destructive-diff confirm are ticket 07.
+  (canvas undo, a co-editor) through the shared `useDocumentSync`, with no
+  banner; a dirty scope keeps its draft verbatim and its buffer mounted
+  (`holdRemounts`), so caret and text history survive every store change —
+  including the remote ones the stale banner reports.
+- **Guardrails** — two, and every other apply is silent. Each draft records
+  the projection it started from (`baseHtml`), so both are *derived* from
+  state rather than tracked by subscriptions:
+  - **Stale draft.** A dirty scope whose current projection differs from
+    the draft's baseline — a co-editor, an MCP agent, or a canvas undo
+    changed the projected subtree — shows a "Content changed remotely"
+    banner (`html-panel-stale`), keeps the draft and buffer untouched, and
+    turns Apply into overwrite-with-confirm. The only exits are explicit:
+    confirm the overwrite (the draft is re-imported against the tree as it
+    is at confirm time and wins), or **Discard draft**, which drops the draft
+    and re-keys the buffer to the remote projection. Undoing a tree change
+    under a dirty panel takes the same path: drafts are never silently
+    discarded or silently applied over remote work.
+  - **Destructive diff.** Before committing, `summarizeDestructiveApply`
+    (`html/applyGuardrails.ts`) turns the import diff's `deletedLockedIds`,
+    `deletedStructuralIds`, and `retypedStructuralIds` into a list of
+    top-level removals — locked nodes, Component instances, slots, slot
+    outlets — named as the layer panel names them, with removed descendants
+    folded into their ancestor (deleting one Component instance reads as one
+    line, not one per slot). A non-empty list opens the confirm; cancel
+    leaves the tree and the draft untouched.
+  - Both concerns share one dialog, `HtmlApplyConfirmDialog` (built on the
+    `Dialog` primitive, `tone="danger"`): the stale paragraph, the removal
+    list, or both, with a single confirm button. Confirming **re-validates**:
+    the draft is re-imported against the tree as it is then, and if what the
+    apply would do no longer matches the summary the user read (the tree
+    moved while the dialog was open) the dialog shows the new summary instead
+    of committing. A re-validation that finds nothing left to confirm
+    commits directly.
+  - **Orphaned draft.** When the element a draft is scoped to is removed
+    (remotely, or by a canvas undo), the selection is pruned and the panel
+    moves on to the new scope — but the draft can never be applied. Rather
+    than vanish, it is named in a banner (`html-panel-orphaned`) with
+    **Copy draft** (clipboard) and **Dismiss**; each draft records its
+    `rootId` and scope name for this.
 
 ## CSS panel
 

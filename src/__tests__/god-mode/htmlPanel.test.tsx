@@ -2,7 +2,8 @@
  * HtmlPanel — the God Mode HTML column end to end: projection of the
  * selection, explicit Apply gated on syntax, one undo step, per-scope
  * drafts, read-only Component internals with jump-to-definition, and a
- * token / instatic-* round trip.
+ * token / instatic-* round trip — plus the apply guardrails: the
+ * destructive-diff confirm and the stale-draft banner.
  */
 import { afterEach, beforeEach, describe, expect, it } from 'bun:test'
 import { act, cleanup, fireEvent, render, screen, waitFor } from '@testing-library/react'
@@ -55,6 +56,27 @@ const status = () => screen.getByTestId('html-panel-status').getAttribute('data-
 const applyButton = () => screen.getByTestId('html-panel-apply') as HTMLButtonElement
 // With a tooltip the Button primitive expresses disabled via aria-disabled.
 const applyDisabled = () => applyButton().disabled || applyButton().getAttribute('aria-disabled') === 'true'
+const confirmDialog = () => screen.queryByTestId('html-panel-confirm-dialog')
+const docText = () => editorView().state.doc.toString()
+
+function removeElement(view: EditorView, uid: string) {
+  const text = view.state.doc.toString()
+  const parsed = new DOMParser().parseFromString(`<body>${text}</body>`, 'text/html')
+  const target = parsed.body.querySelector(`[uid="${uid}"]`)
+  expect(target).toBeTruthy()
+  const outer = target!.outerHTML
+  const from = text.indexOf(outer)
+  expect(from).toBeGreaterThanOrEqual(0)
+  act(() => {
+    view.dispatch({ changes: { from, to: from + outer.length, insert: '' } })
+  })
+}
+
+async function clickApply() {
+  await act(async () => {
+    fireEvent.click(applyButton())
+  })
+}
 
 beforeEach(setup)
 afterEach(cleanup)
@@ -78,9 +100,8 @@ describe('HtmlPanel', () => {
     // Nothing touched the tree yet.
     expect(state().site!.pages[0].nodes[textId].props.text).toBe('Hello {page.title}')
 
-    await act(async () => {
-      fireEvent.click(applyButton())
-    })
+    await clickApply()
+    expect(confirmDialog()).toBeNull()
     const page = state().site!.pages[0]
     expect(page.nodes[textId].props.text).toBe('Hi {page.title}')
     expect(page.nodes[siblingId].label).toBe('Farewell')
@@ -193,5 +214,195 @@ describe('HtmlPanel', () => {
     const page = state().site!.pages[0]
     expect(page.nodes[slotId]).toMatchObject({ moduleId: 'base.slot-instance', parentId: refId })
     expect(page.nodes[fillId]).toMatchObject({ parentId: slotId, props: { text: 'Filled twice' } })
+  })
+
+  describe('apply guardrails', () => {
+    it('confirms before deleting a locked node, listing it; cancel leaves the tree untouched', async () => {
+      const { containerId, textId } = setup()
+      state().renameNode(textId, 'Legal text')
+      state().toggleNodeLocked(textId)
+      state().selectNode(containerId)
+      const view = await mountPanel()
+      removeElement(view, textId)
+      await nextFrame()
+      expect(status()).toBe('dirty')
+
+      await clickApply()
+      const dialog = confirmDialog()
+      expect(dialog).toBeTruthy()
+      expect(dialog!.textContent).toContain('Legal text')
+      expect(dialog!.textContent).toContain('locked')
+      expect(state().site!.pages[0].nodes[textId]).toBeTruthy()
+
+      await act(async () => {
+        fireEvent.click(screen.getByTestId('html-panel-confirm-cancel'))
+      })
+      expect(confirmDialog()).toBeNull()
+      expect(state().site!.pages[0].nodes[textId]).toBeTruthy()
+      expect(status()).toBe('dirty')
+      expect(docText()).not.toContain(`uid="${textId}"`)
+
+      await clickApply()
+      await act(async () => {
+        fireEvent.click(screen.getByTestId('html-panel-confirm'))
+      })
+      expect(confirmDialog()).toBeNull()
+      expect(state().site!.pages[0].nodes[textId]).toBeUndefined()
+      expect(status()).toBe('clean')
+    })
+
+    it('confirms before removing a Component instance, naming the component', async () => {
+      const { containerId } = setup()
+      const vcId = state().createVisualComponent('Card')
+      const refId = state().insertComponentRef(containerId, vcId)!
+      state().selectNode(containerId)
+      const view = await mountPanel()
+      removeElement(view, refId)
+      await nextFrame()
+      await clickApply()
+      const dialog = confirmDialog()
+      expect(dialog).toBeTruthy()
+      expect(dialog!.textContent).toContain('Card')
+      expect(dialog!.textContent).toContain('component')
+      await act(async () => {
+        fireEvent.click(screen.getByTestId('html-panel-confirm'))
+      })
+      expect(state().site!.pages[0].nodes[refId]).toBeUndefined()
+    })
+
+    it('keeps the draft verbatim and shows the banner when the subtree changes remotely', async () => {
+      const { containerId, textId, siblingId } = setup()
+      state().selectNode(containerId)
+      const view = await mountPanel()
+      replaceInDoc(view, 'Hello {page.title}', 'Mine {page.title}')
+      await nextFrame()
+      const draftText = docText()
+      expect(screen.queryByTestId('html-panel-stale')).toBeNull()
+
+      act(() => {
+        state().updateNodeProps(siblingId, { text: 'Remote' })
+      })
+      await waitFor(() => expect(status()).toBe('stale'))
+      expect(screen.getByTestId('html-panel-stale')).toBeTruthy()
+      expect(docText()).toBe(draftText)
+
+      // Apply now needs the explicit overwrite confirmation, then wins.
+      await clickApply()
+      const dialog = confirmDialog()
+      expect(dialog).toBeTruthy()
+      expect(dialog!.textContent).toMatch(/changed/i)
+      expect(state().site!.pages[0].nodes[siblingId].props.text).toBe('Remote')
+      await act(async () => {
+        fireEvent.click(screen.getByTestId('html-panel-confirm'))
+      })
+      const page = state().site!.pages[0]
+      expect(page.nodes[textId].props.text).toBe('Mine {page.title}')
+      expect(page.nodes[siblingId].props.text).toBe('Bye')
+      expect(status()).toBe('clean')
+      expect(screen.queryByTestId('html-panel-stale')).toBeNull()
+    })
+
+    it('takes the stale path when a tree change is undone under a dirty panel', async () => {
+      const { containerId } = setup()
+      state().selectNode(containerId)
+      const view = await mountPanel()
+      replaceInDoc(view, 'Hello {page.title}', 'First {page.title}')
+      await nextFrame()
+      await clickApply()
+      expect(status()).toBe('clean')
+
+      replaceInDoc(editorView(), 'First {page.title}', 'Second {page.title}')
+      await nextFrame()
+      expect(status()).toBe('dirty')
+      act(() => {
+        state().undo()
+      })
+      await waitFor(() => expect(status()).toBe('stale'))
+      expect(docText()).toContain('Second {page.title}')
+    })
+
+    it('discarding a stale draft shows the remote projection', async () => {
+      const { containerId, siblingId } = setup()
+      state().selectNode(containerId)
+      const view = await mountPanel()
+      replaceInDoc(view, 'Hello {page.title}', 'Mine {page.title}')
+      await nextFrame()
+      act(() => {
+        state().updateNodeProps(siblingId, { text: 'Remote' })
+      })
+      await waitFor(() => expect(status()).toBe('stale'))
+      await act(async () => {
+        fireEvent.click(screen.getByTestId('html-panel-discard'))
+      })
+      await waitFor(() => expect(docText()).toContain('Remote'))
+      expect(docText()).not.toContain('Mine')
+      expect(status()).toBe('clean')
+      expect(state().site!.pages[0].nodes[siblingId].props.text).toBe('Remote')
+    })
+
+    it('refreshes a clean panel on a remote change with no banner', async () => {
+      const { containerId, siblingId } = setup()
+      state().selectNode(containerId)
+      await mountPanel()
+      act(() => {
+        state().updateNodeProps(siblingId, { text: 'Remote' })
+      })
+      await waitFor(() => expect(docText()).toContain('Remote'))
+      expect(status()).toBe('clean')
+      expect(screen.queryByTestId('html-panel-stale')).toBeNull()
+    })
+
+    it('re-validates the confirm when the tree changes while the dialog is open', async () => {
+      const { containerId, textId, siblingId } = setup()
+      state().toggleNodeLocked(textId)
+      state().selectNode(containerId)
+      const view = await mountPanel()
+      removeElement(view, textId)
+      await nextFrame()
+      await clickApply()
+      expect(confirmDialog()!.textContent).not.toMatch(/changed/i)
+
+      act(() => {
+        state().updateNodeProps(siblingId, { text: 'Remote' })
+      })
+      await act(async () => {
+        fireEvent.click(screen.getByTestId('html-panel-confirm'))
+      })
+      // The summary no longer matched: the dialog re-opened with the stale notice instead of committing.
+      expect(confirmDialog()).toBeTruthy()
+      expect(confirmDialog()!.textContent).toMatch(/changed/i)
+      expect(state().site!.pages[0].nodes[textId]).toBeTruthy()
+
+      await act(async () => {
+        fireEvent.click(screen.getByTestId('html-panel-confirm'))
+      })
+      expect(confirmDialog()).toBeNull()
+      expect(state().site!.pages[0].nodes[textId]).toBeUndefined()
+      expect(state().site!.pages[0].nodes[siblingId].props.text).toBe('Bye')
+    })
+
+    it('surfaces a draft whose element was removed remotely instead of dropping it', async () => {
+      const { textId } = setup()
+      state().renameNode(textId, 'Intro')
+      state().selectNode(textId)
+      const view = await mountPanel()
+      replaceInDoc(view, 'Hello', 'Orphan')
+      await nextFrame()
+      expect(status()).toBe('dirty')
+
+      act(() => {
+        state().deleteNode(textId)
+      })
+      await waitFor(() => expect(screen.queryByTestId('html-panel-orphaned')).toBeTruthy())
+      expect(screen.getByTestId('html-panel-orphaned').textContent).toContain('Intro')
+      // The panel moved on to the page scope; the draft is not applied anywhere.
+      expect(status()).toBe('clean')
+      expect(Object.values(state().site!.pages[0].nodes).some((n) => n.props.text === 'Orphan')).toBe(false)
+
+      await act(async () => {
+        fireEvent.click(screen.getByTestId('html-panel-orphan-dismiss'))
+      })
+      expect(screen.queryByTestId('html-panel-orphaned')).toBeNull()
+    })
   })
 })
