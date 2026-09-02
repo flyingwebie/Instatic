@@ -1,0 +1,54 @@
+.panel {
+  display: flex;
+  flex-direction: column;
+  flex: 1;
+  min-height: 0;
+}
+
+.editor {
+  flex: 1;
+  min-height: 0;
+}
+
+.editor [data-codemirror-container] {
+  height: 100%;
+  min-height: 0;
+}
+
+.editor :global(.cm-editor) {
+  height: 100%;
+}
+
+.editor :global(.cm-scroller) {
+  min-height: 0;
+}
+
+.loading,
+.empty {
+  flex: 1;
+  display: grid;
+  place-items: center;
+  padding: var(--space-s);
+  font-size: var(--text-s);
+  color: var(--text-muted);
+  text-align: center;
+}
+
+.status {
+  flex: none;
+  padding: var(--space-3xs) var(--space-s);
+  border-top: 1px solid var(--border-subtle);
+  font-size: var(--text-2xs);
+  color: var(--text-muted);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.statusError {
+  color: var(--danger);
+}
+
+.statusWarning {
+  color: var(--warning);
+}

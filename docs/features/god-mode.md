@@ -8,11 +8,11 @@ page while the page tree stays the single source of truth. Spec history:
 
 Current status: the **shell** (toggle, dock layout, persistence), the
 **editable HTML projection render** (`RenderConfig.projection`, see
-[`publisher.md`](publisher.md) → "Editable HTML projection"), and the
+[`publisher.md`](publisher.md) → "Editable HTML projection"), the
 **uid-preserving HTML import** (`importProjectionHtml`, see
-[`html-import.md`](html-import.md) → "Uid-preserving projection import") are
-implemented. The three panels are placeholders; the HTML/CSS/JS editors and
-autocomplete land in follow-up changes.
+[`html-import.md`](html-import.md) → "Uid-preserving projection import"), and
+the **CSS panel** (below) are implemented. The HTML and JS panels are
+placeholders; their editors and autocomplete land in follow-up changes.
 
 ## Enabling and entering
 
@@ -77,13 +77,83 @@ outlives the entitlement (preference turned off, capability revoked), an effect 
   specific loads until the mode is activated. The future CodeMirror panels stay
   behind the same boundary.
 
+## CSS panel
+
+The CSS column (`src/admin/pages/site/code-dock/css/`) is a two-way editor
+over the style-rule registry — a projection, never a second store. The engine
+is `@core/cssProjection` (`src/core/cssProjection/`), pure and DOM-free:
+
+- **`projectStylesheet`** renders an ordered list of blocks into one annotated
+  stylesheet text. Rules go through `createStyleRuleCssEmitter` — the same
+  emitter the publisher and canvas use — so `@media`/`@container`/`@supports`
+  folding, `!important` and property sanitisation cannot drift from a publish.
+  Every block is prefixed by an origin comment (`/* .card · class · used by 3
+  elements */`, `/* h1 · ambient rule · matches 2 elements on this page */`,
+  `/* .text-m · framework utility · read-only · used by 12 elements */`,
+  `/* element · inline styles · this element only */`) and its character
+  range is reported so the editor can lock and fold framework blocks. A rule
+  with no declarations still emits `.card {\n}` so it stays editable.
+- **`planStylesheetEdit`** parses edited text with `cssToStyleRules`
+  (breakpoint-aware `@media` folding, custom conditions preserved) and diffs
+  it against the projection it came from: parsed rules are exact-selector
+  upserts with **replace** semantics; a projected **class** block that
+  vanished is *cleared* (declarations go, the class and its `class=`
+  assignments stay — the CSS panel edits CSS, never assignments); a vanished
+  **ambient** block is *deleted*; the reserved `element { … }` block becomes
+  the node's `inlineStyles` (base-only — any `@media` on it is dropped with a
+  warning); a rule addressed at a locked framework block is reported as
+  blocked and never applied.
+
+**Scope** (`cssPanelDocument.ts` → `deriveCssPanelDocument`): with an element
+selected, the sheet holds its assigned class rules (assignment order), the
+ambient rules matching it — via the Properties panel's own selector model
+(`deriveSelectorPickerModel` pills, editor-attribute-stripped canvas clone), so
+pills and panel never disagree — its inline styles as the `element` block,
+and the framework utilities it wears, last. With nothing selected it holds
+every rule the page uses: classes assigned anywhere in the active tree plus
+ambient rules matching any rendered element. Class usage counts assignments
+site-wide (`buildSelectorUsageMap`, pages **and** Visual Component trees);
+ambient usage counts matches on the current page. In Visual Component canvas
+mode the active tree is the definition tree.
+
+**Write path** — `applyStylesheetEdit` on the style-rule slice
+(`styleRule/stylesheetEditActions.ts`) applies one plan atomically in a single
+`mutateSiteState` recipe: upserts (`rulePayload.ts` → `upsertRulesIntoSite`,
+shared with the agent/MCP `applyCssRules`), cleared class blocks, deleted
+ambient blocks, and the projected node's inline styles (page or active VC
+tree). One debounced flush (300 ms, `CSS_PANEL_APPLY_DELAY_MS`) is therefore
+exactly one tree-undo step; consecutive flushes are separate steps. The
+canvas repaints from the registry as you type. **Editing a shared class edits
+it site-wide by design** — the "used by N elements" annotation is the safety
+rail; there is no silent forking. A new selector typed in the panel creates a
+real class or ambient rule; a new `.class` is **not** auto-assigned to the
+selection (assignment stays explicit — the HTML panel's `class` attribute).
+
+**Editor** — `CodeMirrorEditor` gained two opt-in props for this panel:
+`lockedRanges` (`code-editor/lockedRegions.ts`: read-only ranges that follow
+edits above them, folded on mount, `.cm-lockedLine` styling) and `lintSyntax`
+(`code-editor/syntaxDiagnostics.ts`: lezer parse errors as inline lint
+markers, with the error count passed to `onChange`). The panel holds applies
+back while the document has syntax errors — the CSS parser silently swallows
+everything after a missing brace, and a live "replace" apply would otherwise
+read that as deletions. The theme moved to `code-editor/codeMirrorTheme.ts`;
+the `codemirror-lazy-only` gate now allowlists the lazy chunk's helper modules
+and pins that nothing outside the chunk imports them.
+
+**Sync** — the editor is remounted only when the projected text changes for a
+reason other than the panel's own apply (selection change, canvas Cmd+Z, a
+co-editor's edit): the panel remembers the projection text its last apply
+produced and re-keys the editor when the store projects something else. Undo
+with focus in the panel is CodeMirror's text history; undo in the canvas or
+layer panel is tree undo, which re-syncs the panel.
+
 ## Planned panel semantics (follow-up tickets)
 
-The panels are projections, not storage: the HTML panel renders/edits the page
-tree via a uid-preserving import; the CSS panel projects the style-rule registry;
-the JS panel edits a page-scoped script code asset. Selection in the layer panel
-scopes all views; autocomplete covers tags, classes, published-site CSS variables,
-and dynamic-data tokens. See `.scratch/god-mode/spec.md` for the full design.
+The HTML panel renders/edits the page tree via the uid-preserving import; the
+JS panel edits a page-scoped script code asset. Selection in the layer panel
+scopes all views; autocomplete covers tags, classes, published-site CSS
+variables, and dynamic-data tokens. See `.scratch/god-mode/spec.md` for the
+full design.
 
 ## Tests
 
@@ -100,3 +170,16 @@ and dynamic-data tokens. See `.scratch/god-mode/spec.md` for the full design.
   loop-filters patching, destructive-deletion diff flags).
 - `src/__tests__/settings/settingsSections.test.tsx` — capability-gated
   preference hidden for non-structure editors.
+- `src/__tests__/cssProjection/projectStylesheet.test.ts` /
+  `planStylesheetEdit.test.ts` — the CSS projection engine (annotations,
+  `@media` round-trip, cleared vs deleted blocks, `element` block, locked
+  framework selectors, new selectors).
+- `src/__tests__/editor-store/stylesheetEdit.test.ts` — `applyStylesheetEdit`
+  as one undo step, locked-rule refusal, no-op contract, VC-tree inline styles.
+- `src/__tests__/god-mode/cssPanelDocument.test.ts` — selection vs page scope,
+  usage counts, unrendered selection.
+- `src/__tests__/god-mode/cssPanel.test.tsx` — the panel over real
+  CodeMirror: live apply, canvas-undo re-sync, syntax gating, new selector
+  without auto-assignment, selection swaps.
+- `src/__tests__/code-editor/lockedRegions.test.tsx` — locked ranges reject
+  edits, fold on mount, and syntax error counts ride along with changes.

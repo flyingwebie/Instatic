@@ -1,9 +1,10 @@
 /**
  * CodeDock — the God Mode bottom region hosting the HTML | CSS | JS code
- * panels. Ticket 01 ships the shell: layout, per-column show/hide, column
- * and height resizing, narrow-window tab fallback, and layout persistence
- * (via the uiSlice fields projected by siteEditorLayoutPersistence). The
- * panels themselves are placeholders until the panel tickets land.
+ * panels: layout, per-column show/hide, column and height resizing,
+ * narrow-window tab fallback, and layout persistence (via the uiSlice fields
+ * projected by siteEditorLayoutPersistence). The CSS column hosts the live
+ * style-rule editor (`./css`); HTML and JS are placeholders until their
+ * tickets land.
  *
  * Resize model (matches SidebarResizeHandle's): pointer drags write CSS
  * custom properties on the dock element imperatively for a 60fps live drag,
@@ -20,6 +21,7 @@ import {
 } from '@site/store/slices/codeDockSlice'
 import { Button } from '@ui/components/Button'
 import { cn } from '@ui/cn'
+import { CssPanel } from './css'
 import styles from './CodeDock.module.css'
 
 const PANELS: ReadonlyArray<{ id: CodeDockPanelId; label: string }> = [
@@ -239,7 +241,7 @@ export function CodeDock() {
 
       {tabbed ? (
         <div className={styles.columns}>
-          <CodeDockPanelPlaceholder
+          <CodeDockPanel
             id={activeTab}
             label={PANELS.find((p) => p.id === activeTab)?.label ?? activeTab}
           />
@@ -259,7 +261,7 @@ export function CodeDock() {
                   }
                 />
               )}
-              <CodeDockPanelPlaceholder id={panel.id} label={panel.label} />
+              <CodeDockPanel id={panel.id} label={panel.label} />
             </div>
           ))}
         </div>
@@ -270,7 +272,7 @@ export function CodeDock() {
   )
 }
 
-function CodeDockPanelPlaceholder({ id, label }: { id: CodeDockPanelId; label: string }) {
+function CodeDockPanel({ id, label }: { id: CodeDockPanelId; label: string }) {
   return (
     <section
       className={cn(styles.column, styles[`column_${id}`])}
@@ -278,9 +280,13 @@ function CodeDockPanelPlaceholder({ id, label }: { id: CodeDockPanelId; label: s
       data-testid={`code-dock-panel-${id}`}
     >
       <div className={styles.columnTitle}>{label}</div>
-      <div className={styles.columnBody}>
-        <p className={styles.placeholder}>The {label} editor lands in an upcoming God Mode update.</p>
-      </div>
+      {id === 'css' ? (
+        <CssPanel />
+      ) : (
+        <div className={styles.columnBody}>
+          <p className={styles.placeholder}>The {label} editor lands in an upcoming God Mode update.</p>
+        </div>
+      )}
     </section>
   )
 }
