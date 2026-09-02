@@ -39,6 +39,36 @@ export const PROJECTION_TAGS = {
   outlet: 'instatic-outlet',
 } as const
 
+export type ProjectionTag = (typeof PROJECTION_TAGS)[keyof typeof PROJECTION_TAGS]
+
+/**
+ * The attributes each marker tag carries — the dialect's vocabulary in one
+ * place, matching what the renderers below emit and `htmlImport` reads
+ * (`instaticDialect.ts`, `rules.ts`). The God Mode editor completes from it.
+ */
+export const PROJECTION_TAG_ATTRIBUTES: Readonly<Record<ProjectionTag, readonly string[]>> = {
+  [PROJECTION_TAGS.loop]: [
+    'data-source-id',
+    'data-table-id',
+    'data-order-by',
+    'data-direction',
+    'data-limit',
+    'data-offset',
+    'data-pagination',
+    'data-page-size',
+    'data-tag',
+    'data-custom-tag',
+  ],
+  [PROJECTION_TAGS.component]: ['data-component-id', 'data-component-name'],
+  [PROJECTION_TAGS.slot]: ['data-slot-name'],
+  [PROJECTION_TAGS.slotOutlet]: ['data-slot-name'],
+  [PROJECTION_TAGS.outlet]: ['data-tag', 'data-custom-tag'],
+}
+
+export function isProjectionTag(tagName: string): tagName is ProjectionTag {
+  return tagName in PROJECTION_TAG_ATTRIBUTES
+}
+
 type ProjectionRenderer = (
   node: PageNode,
   config: RenderConfig,

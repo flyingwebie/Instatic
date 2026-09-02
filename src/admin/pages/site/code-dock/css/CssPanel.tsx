@@ -22,6 +22,7 @@ import { findRenderedCanvasNodeElement } from '@site/canvas/canvasNodeLookup'
 import type { EditorChangeInfo } from '@site/code-editor/CodeMirrorEditor'
 import { cn } from '@ui/cn'
 import { useDocumentSync, type DocumentSyncSource } from '../useDocumentSync'
+import { deriveCssCompletionCatalog } from '../completions'
 import { deriveCssPanelDocument, type CssPanelCanvas, type CssPanelDocument } from './cssPanelDocument'
 import { selectSelectionScope, selectionScopeEqual, type SelectionScopeInputs } from '../selectionScope'
 import styles from '../EditorColumn.module.css'
@@ -93,9 +94,11 @@ export function CssPanel() {
     else setStatus({ kind: 'idle' })
   }
 
-  if (!document || docKey === null) {
+  if (!document || docKey === null || !inputs.site) {
     return <p className={styles.empty}>Open a page to edit its CSS.</p>
   }
+
+  const completions = deriveCssCompletionCatalog(inputs.site)
 
   return (
     <div className={styles.panel} data-testid="css-panel">
@@ -108,6 +111,7 @@ export function CssPanel() {
             changeDelayMs={CSS_PANEL_APPLY_DELAY_MS}
             lintSyntax
             lockedRanges={document.projection.blocks.filter((block) => block.locked)}
+            completions={completions}
             onChange={onChange}
           />
         </Suspense>

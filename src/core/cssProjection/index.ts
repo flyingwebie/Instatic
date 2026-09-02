@@ -15,3 +15,5 @@ export type {
 } from './types'
 export { planStylesheetEdit } from './planStylesheetEdit'
 export type { StylesheetEdit, StylesheetEditPlan, StylesheetEditPlanInput } from './planStylesheetEdit'
+export { collectSiteCustomProperties } from './customProperties'
+export type { SiteCustomProperty } from './customProperties'

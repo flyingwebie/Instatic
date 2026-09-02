@@ -58,6 +58,8 @@ import { editorTheme, readableSyntaxHighlighting } from './codeMirrorTheme'
 import { foldLockedRanges, lockedRegions, type LockedRange } from './lockedRegions'
 import { uidAttributes } from './uidAttributes'
 import { syntaxDiagnostics } from './syntaxDiagnostics'
+import { contextCompletions } from './contextCompletions'
+import type { EditorCompletionCatalog } from './completionCatalog'
 
 // ---------------------------------------------------------------------------
 // Per-type extension stacks
@@ -157,6 +159,14 @@ interface CodeMirrorEditorProps {
   foldUidAttributes?: boolean
   /** Mod-Enter: the pending text is flushed to `onChange`, then this runs. */
   onSubmit?: () => void
+  /**
+   * Context the document is edited in — class names, published-site custom
+   * properties, dynamic-token schemas, page classes/ids — turned into
+   * completion sources appended to the language's defaults (language data,
+   * so the TypeScript language-service override above ignores it). Read
+   * live: a new catalog takes effect on the next completion, no remount.
+   */
+  completions?: EditorCompletionCatalog
 }
 
 const rejectAllChanges = EditorState.changeFilter.of(() => false)
@@ -324,6 +334,7 @@ export default function CodeMirrorEditor({
   readOnly = false,
   foldUidAttributes = false,
   onSubmit,
+  completions,
 }: CodeMirrorEditorProps) {
   const containerRef = useRef<HTMLDivElement | null>(null)
   const viewRef = useRef<EditorView | null>(null)
@@ -353,6 +364,11 @@ export default function CodeMirrorEditor({
   useEffect(() => {
     onSubmitRef.current = onSubmit
   }, [onSubmit])
+  const completionsRef = useRef(completions)
+  useEffect(() => {
+    completionsRef.current = completions
+  }, [completions])
+  const getCompletions = () => completionsRef.current ?? null
 
   // useCallback kept: stable identity for the [flush] useEffect dep array (exhaustive-deps).
   // Flush pending content to the store immediately (called on doc switch).
@@ -407,6 +423,7 @@ export default function CodeMirrorEditor({
                 hoverTooltip(typeScriptHoverSource(typeScriptClient, filePath)),
               ]
             : []),
+          ...(completions ? [contextCompletions(getCompletions)] : []),
           readableSyntaxHighlighting,
           editorTheme,
           ...(lockedRanges.length > 0 ? [lockedRegions(lockedRanges)] : []),

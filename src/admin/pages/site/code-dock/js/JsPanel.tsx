@@ -14,6 +14,7 @@ import { lazy, Suspense } from 'react'
 import { useShallow } from 'zustand/react/shallow'
 import { findPageScript, pageScriptPath } from '@core/site-runtime'
 import type { SiteFile } from '@core/files/schemas'
+import type { Page, SiteDocument } from '@core/page-tree'
 import { useEditorStore } from '@site/store/store'
 import type { EditorStore } from '@site/store/types'
 import { fileLanguage } from '@site/code-editor/fileLanguage'
@@ -23,6 +24,7 @@ import {
 } from '@site/hooks/useRuntimeScriptDiagnostics'
 import { cn } from '@ui/cn'
 import { useDocumentSync, type DocumentSyncSource } from '../useDocumentSync'
+import { deriveJsCompletionCatalog } from '../completions'
 import styles from '../EditorColumn.module.css'
 
 const CodeMirrorEditor = lazy(() => import('@site/code-editor/CodeMirrorEditor'))
@@ -40,7 +42,8 @@ const selectInputs = (s: JsPanelInputs): JsPanelInputs => ({
 })
 
 interface PageScriptTarget {
-  page: { id: string; slug: string }
+  site: SiteDocument
+  page: Page
   file: SiteFile | null
 }
 
@@ -50,7 +53,7 @@ function resolveTarget(inputs: JsPanelInputs): PageScriptTarget | null {
   if (!site || !activePageId || activeDocument?.kind === 'visualComponent') return null
   const page = site.pages.find((p) => p.id === activePageId)
   if (!page) return null
-  return { page, file: findPageScript(site.files, siteRuntime, page.id) }
+  return { site, page, file: findPageScript(site.files, siteRuntime, page.id) }
 }
 
 const syncSource: DocumentSyncSource<JsPanelInputs> = {
@@ -70,6 +73,9 @@ export function JsPanel({ runtimeValidation }: { runtimeValidation?: RuntimeScri
   const inputs = useEditorStore(useShallow(selectInputs))
   const createPageScript = useEditorStore((s) => s.createPageScript)
   const updateFileContent = useEditorStore((s) => s.updateFileContent)
+  // The selection only shapes completions (the selected element's classes
+  // and id first); the edited document never changes with it.
+  const selectedNodeId = useEditorStore((s) => s.selectedNodeId)
   const { revision, runOwnWrite } = useDocumentSync(syncSource)
   const target = resolveTarget(inputs)
 
@@ -77,8 +83,9 @@ export function JsPanel({ runtimeValidation }: { runtimeValidation?: RuntimeScri
     return <p className={styles.empty}>Open a page to edit its script.</p>
   }
 
-  const { page, file } = target
-  const path = file?.path ?? pageScriptPath(inputs.site?.files ?? [], page)
+  const { site, page, file } = target
+  const path = file?.path ?? pageScriptPath(site.files, page)
+  const completions = deriveJsCompletionCatalog({ site, tree: page, selectedNodeId })
   const diagnostics = file ? fileRuntimeDiagnostics(runtimeValidation?.diagnostics ?? [], file) : []
   const errorCount = diagnostics.filter((d) => d.severity === 'error').length
 
@@ -104,7 +111,8 @@ export function JsPanel({ runtimeValidation }: { runtimeValidation?: RuntimeScri
             changeDelayMs={JS_PANEL_SAVE_DELAY_MS}
             diagnostics={diagnostics}
             filePath={file?.path}
-            projectFiles={file ? inputs.site?.files : undefined}
+            projectFiles={file ? site.files : undefined}
+            completions={completions}
             onChange={onChange}
           />
         </Suspense>

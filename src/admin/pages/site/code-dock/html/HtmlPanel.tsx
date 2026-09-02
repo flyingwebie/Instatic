@@ -44,6 +44,7 @@ import { Button } from '@ui/components/Button'
 import { pushToast } from '@ui/components/Toast'
 import { cn } from '@ui/cn'
 import { useDocumentSync, type DocumentSyncSource } from '../useDocumentSync'
+import { deriveHtmlCompletionCatalog, useDataMeta } from '../completions'
 import { deriveHtmlPanelDocument, type HtmlPanelDocument } from './htmlPanelDocument'
 import { summarizeDestructiveApply, type DestructiveRemoval } from './applyGuardrails'
 import { HtmlApplyConfirmDialog } from './HtmlApplyConfirmDialog'
@@ -157,6 +158,7 @@ export function HtmlPanel() {
   const [bufferRevision, setBufferRevision] = useState(0)
   const [applied, setApplied] = useState<AppliedReport | null>(null)
   const [pending, setPending] = useState<PendingApply | null>(null)
+  const dataMeta = useDataMeta()
 
   if (!document || !inputs.site) {
     return <p className={styles.empty}>Open a page to edit its HTML.</p>
@@ -164,6 +166,11 @@ export function HtmlPanel() {
 
   const site = inputs.site
   const { docKey, html, rootId, tree, readOnly, definitionVcId } = document
+  const activePage =
+    inputs.activeDocument?.kind === 'visualComponent'
+      ? null
+      : site.pages.find((page) => page.id === inputs.activePageId) ?? null
+  const completions = deriveHtmlCompletionCatalog({ site, tree, rootId, activePage, dataMeta })
   const draft = scopeDraft
   const dirty = scopeDirty
   const stale = draft !== undefined && dirty && draft.baseHtml !== html
@@ -368,6 +375,7 @@ export function HtmlPanel() {
             lintSyntax
             foldUidAttributes
             readOnly={readOnly}
+            completions={completions}
             onChange={onChange}
             onSubmit={apply}
           />

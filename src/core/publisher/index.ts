@@ -10,7 +10,13 @@ export type { DocumentMetaOverride, PublishedRuntimePackageImportmap } from './r
 
 export { renderNode, resolveSpecialRenderer, getSpecialRendererModuleIds } from './renderNode'
 
-export { PROJECTION_TAGS, resolveProjectionRenderer } from './renderProjection'
+export {
+  PROJECTION_TAGS,
+  PROJECTION_TAG_ATTRIBUTES,
+  isProjectionTag,
+  resolveProjectionRenderer,
+  type ProjectionTag,
+} from './renderProjection'
 
 export { collectHoleSubtreeModuleIds } from './holeSubtreeModules'
 

@@ -13,8 +13,8 @@ Current status: the **shell** (toggle, dock layout, persistence), the
 [`html-import.md`](html-import.md) → "Uid-preserving projection import"), and
 all three panels — **HTML**, **CSS**, **JS** (below) — are implemented,
 including the HTML panel's apply guardrails (destructive-diff confirm,
-stale-draft banner). Reverse selection sync and the panels' autocomplete land
-in follow-up changes.
+stale-draft banner) and the panels' context-aware autocomplete. Reverse
+selection sync lands in a follow-up change.
 
 ## Enabling and entering
 
@@ -268,12 +268,82 @@ with no new publish path.
   the same `useDocumentSync` hook the CSS panel uses (`code-dock/
   useDocumentSync.ts`).
 
+## Autocomplete
+
+Each panel completes from what the editor knows, on top of — never instead
+of — its language's own completions. The data is a **completion catalog**
+(`code-editor/completionCatalog.ts`, a CodeMirror-free shape derived in the
+eager graph by `code-dock/completions/` and handed to `CodeMirrorEditor` as
+`completions`); the lazy chunk turns it into completion sources registered
+as language data (`code-editor/contextCompletions.ts`), so lang-html /
+lang-css / lang-javascript keep their defaults and CodeMirror merges the
+lists. The catalog is read through a getter on every completion: a new class
+or a late-loaded table schema takes effect without remounting the view. (The
+TypeScript language-service path keeps its `override`, which ignores language
+data — page scripts are `.js`, so the JS panel is never on that path.)
+
+- **HTML** (`htmlContextCompletions.ts`, catalog from
+  `deriveHtmlCompletionCatalog`):
+  - the projection dialect's `instatic-*` marker tags next to the standard
+    tags, and inside one its attributes (`PROJECTION_TAG_ATTRIBUTES`, the
+    dialect vocabulary exported by `@core/publisher` next to
+    `PROJECTION_TAGS`) plus known values — registered loop sources for
+    `data-source-id`, tables for `data-table-id`, Visual Components for
+    `data-component-id`, `asc`/`desc`, `infinite`;
+  - class names inside a `class` attribute, one word at a time, framework
+    utilities included (they are assignable) and labelled as such;
+  - **dynamic tokens** after `{` in text or any attribute value, offered as
+    whole `source.field` paths with the field's label: `page` / `site` /
+    `route` always (`SYSTEM_SOURCES`, the binding picker's own list);
+    `currentEntry` and `parentEntry` from the **entry stack** in scope —
+    the catalog's outer frames (the template page's entry via
+    `primaryTemplateTableSlug`, then the `base.loop` ancestors of the
+    projected root, from the tree) followed by the `<instatic-loop>`
+    elements enclosing the cursor, read from the document text so a loop
+    typed a moment ago already completes its fields. The innermost frame is
+    the current entry, the one below it the parent entry
+    (`resolveEntryFields`). A loop's fields come from its **actual source
+    schema**: a table-bound `data.rows` loop offers the table's fields
+    (from the CMS data meta, loaded once through the binding picker's
+    cache — `useDataMeta`) plus the loop source's synthetic metadata the
+    table doesn't declare, with post-type-only fields hidden for data
+    tables — the same rule the binding picker applies
+    (`DataBindingPicker/entryFields.ts`, shared); any other source offers
+    its declared `fields`. Outside every loop and template only the
+    non-entry sources appear.
+- **CSS** (`cssContextCompletions.ts`, catalog from
+  `deriveCssCompletionCatalog`):
+  - inside `var(…)` — from `var(` on, through a partial `-`/`--name` —
+    **every custom property that exists on the published site**
+    (`collectSiteCustomProperties` in `@core/cssProjection`): the
+    framework-generated token variables (colors and their variants, type
+    scale, spacing scale, via `describeFrameworkTokens`, so the list can
+    never name a variable the `:root` block doesn't emit), then the
+    properties authors declared in style rules (base and context styles,
+    cascade order), then those declared in style code assets. Grouped by
+    origin, with the value as detail and the declaring selector/file as
+    info. The admin UI's own `--editor-*` tokens are not a source and never
+    appear. Properties the current sheet itself declares are left to
+    lang-css, which lists those already;
+  - after `.` in a selector: the site's editable class names with their
+    site-wide usage (framework utilities are locked in this panel, so they
+    are not offered as selectors).
+- **JS** (`jsContextCompletions.ts`, catalog from
+  `deriveJsCompletionCatalog`): inside the string argument of a DOM lookup,
+  the page's real class names (every class assigned in the active tree)
+  and element ids (`htmlAttributes.id`), the **selected element's own
+  first** ("Selected element" section, boosted): `.class` / `#id` tokens in
+  `querySelector` / `querySelectorAll` / `closest` / `matches` (a bare `.`
+  or `#` narrows to one kind), bare class names in `getElementsByClassName`
+  and `classList.add/remove/toggle/contains/replace`, bare ids in
+  `getElementById`. Selection changes update the catalog, never the
+  document.
+
 ## Planned follow-ups
 
-HTML apply guardrails (destructive-diff confirm, stale-draft banner),
-reverse selection sync from the HTML panel, and autocomplete (tags, classes,
-published-site CSS variables, dynamic-data tokens). See
-`.scratch/god-mode/spec.md` for the full design.
+Reverse selection sync from the HTML panel (cursor in a tag → canvas hover
+ring; click on a tag name → selects the node). See `.scratch/god-mode/spec.md`
+for the full design.
 
 ## Tests
 
@@ -321,3 +391,19 @@ published-site CSS variables, dynamic-data tokens). See
   round trip.
 - `src/__tests__/code-editor/editorSubmitReadOnly.test.tsx` — `onSubmit`
   (Mod-Enter after flush) and `readOnly`.
+- `src/__tests__/cssProjection/customProperties.test.ts` —
+  `collectSiteCustomProperties`: framework tokens, rule and asset
+  declarations, first-declaration-wins, no editor tokens.
+- `src/__tests__/god-mode/completionCatalog.test.ts` — the catalog
+  derivations over the store: class lists, token sources, outer entry
+  frames (template page, loop ancestors), `resolveEntryFields` (table +
+  loop metadata, post-type filter, stacking), page classes/ids with the
+  selection first.
+- `src/__tests__/code-editor/contextCompletions.test.ts` — the three
+  context sources over real language states: marker tags / attributes /
+  values, class attributes, tokens with entry resolution from the text and
+  the catalog, `var()` properties grouped by origin, selector classes,
+  script selector strings — and the language defaults still answering
+  alongside.
+- `src/__tests__/god-mode/panelCompletions.test.tsx` — the panels over real
+  CodeMirror, completing from the store (loaded data meta included).

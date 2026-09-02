@@ -81,7 +81,17 @@ function collectProdFiles(): string[] {
 // Paths are relative to SRC_ROOT (i.e. relative to `src/`).
 const LAZY_CHUNK_DIR = 'admin/pages/site/code-editor/'
 const LAZY_CHUNK_ENTRY = `${LAZY_CHUNK_DIR}CodeMirrorEditor.tsx`
-const LAZY_CHUNK_HELPERS = ['codeMirrorTheme.ts', 'lockedRegions.ts', 'syntaxDiagnostics.ts', 'uidAttributes.tsx']
+const LAZY_CHUNK_HELPERS = [
+  'codeMirrorTheme.ts',
+  'lockedRegions.ts',
+  'syntaxDiagnostics.ts',
+  'uidAttributes.tsx',
+  'contextCompletions.ts',
+  'htmlContextCompletions.ts',
+  'cssContextCompletions.ts',
+  'jsContextCompletions.ts',
+  'syntaxNode.ts',
+]
 const LAZY_CHUNK_MODULES = new Set([
   LAZY_CHUNK_ENTRY,
   ...LAZY_CHUNK_HELPERS.map((file) => `${LAZY_CHUNK_DIR}${file}`),
