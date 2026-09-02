@@ -11,6 +11,12 @@
  * and commit to the store once on pointer-up — so the localStorage
  * persistence subscriber fires once per gesture, not per mousemove.
  * Keyboard resizes are discrete and commit immediately.
+ *
+ * Any one panel can be EXPANDED into a full-size dialog for a bigger
+ * editing area; while expanded it renders only there, and its column shows
+ * a placeholder until the dialog closes. The move remounts the panel, which
+ * is why the panels keep their unapplied drafts in the store
+ * (`codeDockDrafts`) rather than in component state.
  */
 import { useEffect, useRef, useState, type CSSProperties } from 'react'
 import { useEditorStore } from '@site/store/store'
@@ -20,6 +26,8 @@ import {
   type CodeDockPanelId,
 } from '@site/store/slices/codeDockSlice'
 import { Button } from '@ui/components/Button'
+import { Dialog } from '@ui/components/Dialog'
+import { ArrowsScaleIcon } from 'pixel-art-icons/icons/arrows-scale'
 import { cn } from '@ui/cn'
 import { HtmlPanel } from './html'
 import { CssPanel } from './css'
@@ -84,6 +92,7 @@ export function CodeDock({ runtimeValidation }: CodeDockProps) {
   const setPropertiesPanel = useEditorStore((s) => s.setPropertiesPanel)
 
   const visiblePanels = PANELS.filter((p) => panels[p.id])
+  const [expanded, setExpanded] = useState<CodeDockPanelId | null>(null)
 
   // Narrow-window fallback: when the visible columns can't all fit at their
   // minimum width, collapse to one tabbed editor. Driven by a ResizeObserver
@@ -165,8 +174,10 @@ export function CodeDock({ runtimeValidation }: CodeDockProps) {
     const startRightPx = weights[rightId] * pxPerWeight
     const pairPx = startLeftPx + startRightPx
     let liveWeights: CodeDockColumnWeights = { ...weights }
+    const handle = event.currentTarget
+    handle.dataset.dragging = 'true'
     trackPointerDrag(
-      event.currentTarget,
+      handle,
       event.pointerId,
       (move) => {
         const delta = move.clientX - startX
@@ -183,6 +194,7 @@ export function CodeDock({ runtimeValidation }: CodeDockProps) {
         el.style.setProperty(`--code-dock-weight-${rightId}`, String(liveWeights[rightId]))
       },
       (commit) => {
+        delete handle.dataset.dragging
         for (const panel of PANELS) el.style.removeProperty(`--code-dock-weight-${panel.id}`)
         if (commit) setCodeDockColumnWeights(liveWeights)
       },
@@ -253,6 +265,8 @@ export function CodeDock({ runtimeValidation }: CodeDockProps) {
             id={activeTab}
             label={PANELS.find((p) => p.id === activeTab)?.label ?? activeTab}
             runtimeValidation={runtimeValidation}
+            expanded={expanded === activeTab}
+            onExpand={() => setExpanded(activeTab)}
           />
         </div>
       ) : visiblePanels.length > 0 ? (
@@ -270,35 +284,73 @@ export function CodeDock({ runtimeValidation }: CodeDockProps) {
                   }
                 />
               )}
-              <CodeDockPanel id={panel.id} label={panel.label} runtimeValidation={runtimeValidation} />
+              <CodeDockPanel
+                id={panel.id}
+                label={panel.label}
+                runtimeValidation={runtimeValidation}
+                expanded={expanded === panel.id}
+                onExpand={() => setExpanded(panel.id)}
+              />
             </div>
           ))}
         </div>
       ) : (
         <div className={styles.allHidden}>All panels hidden — use the buttons above to show one.</div>
       )}
+
+      {expanded ? (
+        <Dialog
+          open
+          size="full"
+          title={`${PANELS.find((p) => p.id === expanded)?.label ?? expanded} panel`}
+          bodyClassName={styles.expandedBody}
+          onClose={() => setExpanded(null)}
+          ariaLabel="Expanded code panel"
+        >
+          <CodeDockPanelBody id={expanded} runtimeValidation={runtimeValidation} />
+        </Dialog>
+      ) : null}
     </section>
   )
+}
+
+function CodeDockPanelBody({ id, runtimeValidation }: CodeDockProps & { id: CodeDockPanelId }) {
+  if (id === 'html') return <HtmlPanel />
+  if (id === 'css') return <CssPanel />
+  return <JsPanel runtimeValidation={runtimeValidation} />
 }
 
 function CodeDockPanel({
   id,
   label,
   runtimeValidation,
-}: CodeDockProps & { id: CodeDockPanelId; label: string }) {
+  expanded,
+  onExpand,
+}: CodeDockProps & { id: CodeDockPanelId; label: string; expanded: boolean; onExpand: () => void }) {
   return (
     <section
       className={cn(styles.column, styles[`column_${id}`])}
       aria-label={`${label} panel`}
       data-testid={`code-dock-panel-${id}`}
     >
-      <div className={styles.columnTitle}>{label}</div>
-      {id === 'html' ? (
-        <HtmlPanel />
-      ) : id === 'css' ? (
-        <CssPanel />
+      <div className={styles.columnTitle}>
+        {label}
+        <Button
+          variant="ghost"
+          size="xs"
+          iconOnly
+          aria-label={`Expand the ${label} panel`}
+          tooltip={`Expand the ${label} panel into a larger editor`}
+          onClick={onExpand}
+          data-testid={`code-dock-expand-${id}`}
+        >
+          <ArrowsScaleIcon size={12} aria-hidden="true" />
+        </Button>
+      </div>
+      {expanded ? (
+        <div className={styles.expandedPlaceholder}>Editing in the expanded view</div>
       ) : (
-        <JsPanel runtimeValidation={runtimeValidation} />
+        <CodeDockPanelBody id={id} runtimeValidation={runtimeValidation} />
       )}
     </section>
   )

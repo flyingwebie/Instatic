@@ -125,4 +125,24 @@ describe('CssPanel', () => {
     })
     await waitFor(() => expect(editorView().state.doc.toString()).toContain('element {'))
   })
+
+  it('keeps a buffer that does not parse across a panel remount, and drops the draft once it applies', async () => {
+    const { cardId } = setup()
+    const view = await mountPanel()
+    replaceInDoc(view, 'color: red;', 'color: red; opacity: {')
+    await act(afterDebounce)
+    expect(screen.getByTestId('css-panel-status').getAttribute('data-status')).toBe('syntax')
+    expect(state().site!.styleRules[cardId].styles).toEqual({ color: 'red' })
+    const brokenText = view.state.doc.toString()
+
+    cleanup()
+    const again = await mountPanel()
+    expect(again.state.doc.toString()).toBe(brokenText)
+    expect(screen.getByTestId('css-panel-status').getAttribute('data-status')).toBe('syntax')
+
+    replaceInDoc(again, 'opacity: {', 'opacity: 0.5;')
+    await act(afterDebounce)
+    expect(state().site!.styleRules[cardId].styles).toEqual({ color: 'red', opacity: '0.5' })
+    expect(Object.values(state().codeDockDrafts).some((d) => d.kind === 'css')).toBe(false)
+  })
 })

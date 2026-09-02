@@ -102,3 +102,29 @@
   align-items: center;
   gap: var(--space-3xs);
 }
+
+.toolbarActions {
+  flex: none;
+  display: flex;
+  align-items: center;
+  gap: var(--space-3xs);
+}
+
+.breadcrumbs {
+  flex: none;
+  display: flex;
+  align-items: center;
+  gap: var(--space-4xs);
+  padding: var(--space-4xs) var(--space-xs);
+  border-bottom: 1px solid var(--border-subtle);
+  font-size: var(--text-2xs);
+  color: var(--text-muted);
+  overflow-x: auto;
+  white-space: nowrap;
+  scrollbar-width: none;
+}
+
+.breadcrumbSeparator {
+  color: var(--text-subtle);
+  user-select: none;
+}

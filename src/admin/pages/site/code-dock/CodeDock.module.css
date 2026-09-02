@@ -77,29 +77,64 @@
 
 .columnDivider {
   flex: none;
-  width: 6px;
-  margin: 0 calc(-1 * var(--space-3xs));
+  position: relative;
+  width: 7px;
   cursor: col-resize;
   z-index: 1;
   touch-action: none;
 }
 
-.columnDivider:hover,
-.columnDivider:focus-visible {
-  background: var(--overlay-10);
+/* A visible 1px line inside a 7px grab area, so the handle can be found. */
+.columnDivider::after {
+  content: '';
+  position: absolute;
+  top: 0;
+  bottom: 0;
+  left: 3px;
+  width: 1px;
+  background: var(--border-subtle);
 }
 
-.columnGroup + .columnGroup .column {
-  border-left: 1px solid var(--border-subtle);
+.columnDivider:hover::after,
+.columnDivider:focus-visible::after,
+.columnDivider[data-dragging='true']::after {
+  background: var(--text-muted);
+  left: 2px;
+  width: 3px;
+}
+
+.columnDivider:focus-visible {
+  outline: none;
 }
 
 .columnTitle {
-  padding: var(--space-2xs) var(--space-s);
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: var(--space-xs);
+  padding: var(--space-3xs) var(--space-3xs) var(--space-3xs) var(--space-s);
   font-size: var(--text-2xs);
   font-weight: 600;
   letter-spacing: 0.06em;
   text-transform: uppercase;
   color: var(--text-subtle);
+}
+
+.expandedPlaceholder {
+  flex: 1;
+  display: grid;
+  place-items: center;
+  padding: var(--space-s);
+  font-size: var(--text-s);
+  color: var(--text-muted);
+  text-align: center;
+}
+
+.expandedBody {
+  flex: 1;
+  min-height: 0;
+  display: flex;
+  flex-direction: column;
 }
 
 .allHidden {

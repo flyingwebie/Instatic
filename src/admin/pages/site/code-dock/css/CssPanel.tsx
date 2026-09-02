@@ -12,17 +12,22 @@
  *
  * The editor is only remounted when the projected document changes for a
  * reason other than this panel's own apply (selection change, canvas undo,
- * a co-editor's edit) — see `useDocumentSync`.
+ * a co-editor's edit) — see `useDocumentSync`. A buffer that does not parse
+ * (so nothing was applied) is stashed in the store (`codeDockDrafts`) and
+ * restored when the same document mounts again, so expanding the panel or
+ * the tab fallback cannot lose it.
  */
-import { lazy, Suspense, useState } from 'react'
+import { lazy, Suspense, useRef, useState } from 'react'
 import { useShallow } from 'zustand/react/shallow'
 import { planStylesheetEdit } from '@core/cssProjection'
 import { useEditorStore } from '@site/store/store'
 import { findRenderedCanvasNodeElement } from '@site/canvas/canvasNodeLookup'
-import type { EditorChangeInfo } from '@site/code-editor/CodeMirrorEditor'
+import type { CodeMirrorEditorHandle, EditorChangeInfo } from '@site/code-editor/CodeMirrorEditor'
+import { pushToast } from '@ui/components/Toast'
 import { cn } from '@ui/cn'
 import { useDocumentSync, type DocumentSyncSource } from '../useDocumentSync'
 import { deriveCssCompletionCatalog } from '../completions'
+import { FormatButton } from '../FormatButton'
 import { deriveCssPanelDocument, type CssPanelCanvas, type CssPanelDocument } from './cssPanelDocument'
 import { selectSelectionScope, selectionScopeEqual, type SelectionScopeInputs } from '../selectionScope'
 import styles from '../EditorColumn.module.css'
@@ -67,15 +72,24 @@ const syncSource: DocumentSyncSource<SelectionScopeInputs> = {
 export function CssPanel() {
   const inputs = useEditorStore(useShallow(selectSelectionScope))
   const applyStylesheetEdit = useEditorStore((s) => s.applyStylesheetEdit)
+  const setCodeDockDraft = useEditorStore((s) => s.setCodeDockDraft)
+  const storedDrafts = useEditorStore((s) => s.codeDockDrafts)
   const document: CssPanelDocument | null = deriveCssPanelDocument(inputs, canvas)
   // Status is remembered with the scope it belongs to, so a scope change
   // resets it without an effect.
   const [scopedStatus, setScopedStatus] = useState<{ docKey: string; status: PanelStatus } | null>(null)
   const { revision, runOwnWrite } = useDocumentSync(syncSource)
+  const editorRef = useRef<CodeMirrorEditorHandle | null>(null)
 
   const docKey = document ? `${document.docKey}#${revision}` : null
+  const stored = document ? storedDrafts[document.docKey] : undefined
+  const draft = stored?.kind === 'css' ? stored : undefined
   const status: PanelStatus =
-    scopedStatus && scopedStatus.docKey === docKey ? scopedStatus.status : { kind: 'idle' }
+    scopedStatus && scopedStatus.docKey === docKey
+      ? scopedStatus.status
+      : draft
+        ? { kind: 'syntax', count: draft.syntaxErrorCount }
+        : { kind: 'idle' }
   const setStatus = (next: PanelStatus) => {
     if (docKey !== null) setScopedStatus({ docKey, status: next })
   }
@@ -84,8 +98,10 @@ export function CssPanel() {
     if (!document) return
     if (info.syntaxErrorCount > 0) {
       setStatus({ kind: 'syntax', count: info.syntaxErrorCount })
+      setCodeDockDraft(document.docKey, { kind: 'css', text, syntaxErrorCount: info.syntaxErrorCount })
       return
     }
+    if (draft) setCodeDockDraft(document.docKey, null)
     const plan = planStylesheetEdit({ text, projection: document.projection, breakpoints: document.breakpoints })
     const result = runOwnWrite(() => applyStylesheetEdit(plan.edit))
     const blocked = [...new Set([...plan.blockedSelectors, ...result.blockedSelectors])]
@@ -102,31 +118,39 @@ export function CssPanel() {
 
   return (
     <div className={styles.panel} data-testid="css-panel">
+      <div className={styles.toolbar}>
+        <span
+          className={cn(
+            styles.toolbarNote,
+            (status.kind === 'syntax' || status.kind === 'blocked') && styles.statusError,
+            status.kind === 'warning' && styles.statusWarning,
+          )}
+          role="status"
+          data-testid="css-panel-status"
+          data-status={status.kind}
+        >
+          {statusText(status)}
+        </span>
+        <span className={styles.toolbarActions}>
+          <FormatButton onFormat={() => void editorRef.current?.format()} testId="css-panel-format" />
+        </span>
+      </div>
       <div className={styles.editor}>
         <Suspense fallback={<div className={styles.loading}>Loading editor</div>}>
           <CodeMirrorEditor
+            ref={editorRef}
             docKey={docKey}
-            value={document.projection.text}
+            value={draft?.text ?? document.projection.text}
             language="css"
             changeDelayMs={CSS_PANEL_APPLY_DELAY_MS}
             lintSyntax
+            lintGutter={false}
             lockedRanges={document.projection.blocks.filter((block) => block.locked)}
             completions={completions}
             onChange={onChange}
+            onFormatError={(message) => pushToast({ kind: 'error', title: 'Could not format the CSS', body: message })}
           />
         </Suspense>
-      </div>
-      <div
-        className={cn(
-          styles.status,
-          (status.kind === 'syntax' || status.kind === 'blocked') && styles.statusError,
-          status.kind === 'warning' && styles.statusWarning,
-        )}
-        role="status"
-        data-testid="css-panel-status"
-        data-status={status.kind}
-      >
-        {statusText(status)}
       </div>
     </div>
   )

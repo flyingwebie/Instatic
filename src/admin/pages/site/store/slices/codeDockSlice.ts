@@ -1,4 +1,5 @@
 import type { EditorStoreSliceCreator } from '@site/store/types'
+import { withCodeDockDraft, type CodeDockDraft } from './codeDockDrafts'
 
 /**
  * God Mode / Code Dock slice — the mode flag plus the layout state of the
@@ -39,6 +40,8 @@ interface CodeDockSlice {
   codeDockActiveTab: CodeDockPanelId
   /** Relative flex weights of the visible columns (all > 0). */
   codeDockColumnWeights: CodeDockColumnWeights
+  /** The panels' unapplied buffers, by document key — see `codeDockDrafts.ts`. */
+  codeDockDrafts: Record<string, CodeDockDraft>
 
   /** Set God Mode on/off (idempotent). */
   setGodModeActive: (active: boolean) => void
@@ -52,6 +55,8 @@ interface CodeDockSlice {
   setCodeDockActiveTab: (panel: CodeDockPanelId) => void
   /** Replace column weights. Ignored unless every weight is finite and > 0. */
   setCodeDockColumnWeights: (weights: CodeDockColumnWeights) => void
+  /** Store (or, with null, drop) a panel's draft for a document key. */
+  setCodeDockDraft: (key: string, draft: CodeDockDraft | null) => void
 }
 
 // Contribute this slice's fields to the combined `EditorStore` type via TS
@@ -66,6 +71,7 @@ export const createCodeDockSlice: EditorStoreSliceCreator<CodeDockSlice> = (set,
   codeDockPanels: { html: true, css: true, js: true },
   codeDockActiveTab: 'html',
   codeDockColumnWeights: { html: 1, css: 1, js: 1 },
+  codeDockDrafts: {},
 
   setGodModeActive: (active) => {
     if (Object.is(get().godModeActive, active)) return
@@ -96,5 +102,11 @@ export const createCodeDockSlice: EditorStoreSliceCreator<CodeDockSlice> = (set,
     )
     if (!valid) return
     set({ codeDockColumnWeights: { ...weights } })
+  },
+
+  setCodeDockDraft: (key, draft) => {
+    const current = get().codeDockDrafts
+    if (draft === null && !(key in current)) return
+    set({ codeDockDrafts: withCodeDockDraft(current, key, draft) })
   },
 })

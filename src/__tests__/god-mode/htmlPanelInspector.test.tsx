@@ -99,6 +99,22 @@ describe('HtmlPanel inspector', () => {
     expect(state().selectedNodeId).toBe(text)
   })
 
+  it('shows the cursor element ancestry as breadcrumbs and selects an ancestor on click', async () => {
+    const { rootId, container, text } = setup()
+    state().selectNode(text)
+    const view = await mountPanel()
+    const crumbs = () => Array.from(document.querySelectorAll<HTMLElement>('[data-testid="html-panel-crumb"]'))
+    expect(crumbs().map((c) => c.dataset.nodeId)).toEqual([rootId, container, text])
+    expect(crumbs()[2].getAttribute('aria-pressed')).toBe('true')
+    moveCursorTo(view, 'Hello there')
+    expect(crumbs().map((c) => c.dataset.nodeId)).toEqual([rootId, container, text])
+    act(() => {
+      crumbs()[1].click()
+    })
+    expect(state().selectedNodeId).toBe(container)
+    await waitFor(() => expect(crumbs().map((c) => c.dataset.nodeId)).toEqual([rootId, container]))
+  })
+
   it('is inert in the read-only view of Component-instance internals', async () => {
     const { container } = setup()
     const vcId = state().createVisualComponent('Card')

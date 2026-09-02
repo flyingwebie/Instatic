@@ -1,19 +1,22 @@
 /**
  * HtmlPanel — the God Mode HTML column end to end: projection of the
- * selection, explicit Apply gated on syntax, one undo step, per-scope
- * drafts, read-only Component internals with jump-to-definition, and a
- * token / instatic-* round trip — plus the apply guardrails: the
- * destructive-diff confirm and the stale-draft banner.
+ * selection, live apply gated on syntax, one undo step per flush, per-scope
+ * held drafts, read-only Component internals with jump-to-definition, and a
+ * token / instatic-* round trip — plus the apply guardrails, which hold an
+ * edit for the explicit Apply: the destructive-diff confirm and the
+ * stale-draft banner.
  */
 import { afterEach, beforeEach, describe, expect, it } from 'bun:test'
 import { act, cleanup, fireEvent, render, screen, waitFor } from '@testing-library/react'
 import { EditorView } from '@codemirror/view'
 import { useEditorStore } from '@site/store/store'
-import { HtmlPanel } from '@site/code-dock/html'
+import { HtmlPanel, HTML_PANEL_APPLY_DELAY_MS } from '@site/code-dock/html'
 import { getKeybindingForCommand } from '@admin/spotlight/keybindings'
 import '@modules/base/index'
 
 const nextFrame = () => new Promise((resolve) => requestAnimationFrame(resolve))
+/** Let the live-apply debounce flush. */
+const afterDebounce = () => act(() => new Promise((resolve) => setTimeout(resolve, HTML_PANEL_APPLY_DELAY_MS + 80)))
 
 function state() {
   return useEditorStore.getState()
@@ -86,26 +89,26 @@ describe('HtmlPanel', () => {
     expect(getKeybindingForCommand('godMode.applyHtml')?.shortcut.win).toBe('Ctrl+Enter')
   })
 
-  it('projects the selection, applies explicitly as one undo step, and keeps untouched identity', async () => {
+  it('projects the selection reflowed, applies live as one undo step, and keeps untouched identity', async () => {
     const { containerId, textId, siblingId } = setup()
     state().selectNode(containerId)
     const view = await mountPanel()
-    expect(view.state.doc.toString()).toContain(`<p uid="${textId}">Hello {page.title}</p>`)
+    expect(view.state.doc.toString()).toContain(`\n  <p uid="${textId}">Hello {page.title}</p>\n`)
     expect(applyDisabled()).toBe(true)
+    expect(screen.getByTestId('html-panel-format')).toBeTruthy()
 
     replaceInDoc(view, 'Hello {page.title}', 'Hi {page.title}')
-    await nextFrame()
-    expect(status()).toBe('dirty')
-    expect(applyDisabled()).toBe(false)
-    // Nothing touched the tree yet.
+    // Nothing touched the tree before the debounce.
     expect(state().site!.pages[0].nodes[textId].props.text).toBe('Hello {page.title}')
-
-    await clickApply()
+    await afterDebounce()
     expect(confirmDialog()).toBeNull()
     const page = state().site!.pages[0]
     expect(page.nodes[textId].props.text).toBe('Hi {page.title}')
     expect(page.nodes[siblingId].label).toBe('Farewell')
     expect(status()).toBe('clean')
+    expect(screen.getByTestId('html-panel-status').textContent).toContain('Applied')
+    // The live apply keeps the buffer mounted (caret survives).
+    expect(editorView()).toBe(view)
 
     act(() => {
       state().undo()
@@ -114,30 +117,31 @@ describe('HtmlPanel', () => {
     await waitFor(() => expect(editorView().state.doc.toString()).toContain('Hello {page.title}'))
   })
 
-  it('disables Apply with visible diagnostics while the document does not parse', async () => {
+  it('holds a document that does not parse, with visible diagnostics, until it parses again', async () => {
     const { containerId, textId } = setup()
     state().selectNode(containerId)
     const view = await mountPanel()
-    replaceInDoc(view, '</p>', '</p')
-    await nextFrame()
+    replaceInDoc(view, 'Hello {page.title}</p>', 'Hi {page.title}</p')
+    await afterDebounce()
     expect(status()).toBe('syntax')
     expect(applyDisabled()).toBe(true)
+    expect(state().site!.pages[0].nodes[textId].props.text).toBe('Hello {page.title}')
     const brokenAt = view.state.doc.toString().indexOf('</p')
     act(() => {
       view.dispatch({ changes: { from: brokenAt + 3, insert: '>' } })
     })
-    await nextFrame()
-    expect(status()).not.toBe('syntax')
-    expect(state().site!.pages[0].nodes[textId].props.text).toBe('Hello {page.title}')
+    await afterDebounce()
+    expect(status()).toBe('clean')
+    expect(state().site!.pages[0].nodes[textId].props.text).toBe('Hi {page.title}')
   })
 
-  it('shows the whole page when nothing is selected and keeps a draft across selection changes', async () => {
+  it('shows the whole page when nothing is selected and keeps a held draft across selection changes', async () => {
     const { containerId, textId } = setup()
     state().selectNode(textId)
     const view = await mountPanel()
-    replaceInDoc(view, 'Hello', 'Draft')
-    await nextFrame()
-    expect(status()).toBe('dirty')
+    replaceInDoc(view, 'Hello', 'Draft</b')
+    await afterDebounce()
+    expect(status()).toBe('syntax')
 
     act(() => {
       state().clearSelection()
@@ -148,8 +152,27 @@ describe('HtmlPanel', () => {
     act(() => {
       state().selectNode(textId)
     })
-    await waitFor(() => expect(editorView().state.doc.toString()).toContain('Draft'))
-    expect(status()).toBe('dirty')
+    await waitFor(() => expect(editorView().state.doc.toString()).toContain('Draft</b'))
+    expect(status()).toBe('syntax')
+  })
+
+  it('keeps a held draft in the store across a panel remount (expanding into the dialog)', async () => {
+    const { containerId, textId } = setup()
+    state().toggleNodeLocked(textId)
+    state().selectNode(containerId)
+    const view = await mountPanel()
+    removeElement(view, textId)
+    await afterDebounce()
+    expect(status()).toBe('held')
+    const heldText = docText()
+    expect(Object.values(state().codeDockDrafts).some((d) => d.kind === 'html' && d.held?.kind === 'destructive')).toBe(true)
+
+    cleanup()
+    expect(document.querySelector('.cm-editor')).toBeNull()
+    await mountPanel()
+    expect(status()).toBe('held')
+    expect(docText()).toBe(heldText)
+    expect(state().site!.pages[0].nodes[textId]).toBeTruthy()
   })
 
   it("renders Component-instance internals read-only with a working jump to the definition", async () => {
@@ -181,10 +204,7 @@ describe('HtmlPanel', () => {
     })
     await waitFor(() => expect(editorView().state.doc.toString()).toContain('<instatic-component'))
     replaceInDoc(editorView(), 'Hello {page.title}', 'Hey {page.title}')
-    await nextFrame()
-    await act(async () => {
-      fireEvent.click(applyButton())
-    })
+    await afterDebounce()
     const page = state().site!.pages[0]
     expect(page.nodes[refId]).toMatchObject({ moduleId: 'base.visual-component-ref', parentId: containerId })
     expect(Object.values(page.nodes).some((n) => n.props.text === 'Hey {page.title}')).toBe(true)
@@ -207,10 +227,7 @@ describe('HtmlPanel', () => {
     expect(view.state.doc.toString()).toContain('<instatic-slot')
     expect(view.state.doc.toString()).toContain(`<p uid="${fillId}">Filled</p>`)
     replaceInDoc(view, 'Filled', 'Filled twice')
-    await nextFrame()
-    await act(async () => {
-      fireEvent.click(applyButton())
-    })
+    await afterDebounce()
     const page = state().site!.pages[0]
     expect(page.nodes[slotId]).toMatchObject({ moduleId: 'base.slot-instance', parentId: refId })
     expect(page.nodes[fillId]).toMatchObject({ parentId: slotId, props: { text: 'Filled twice' } })
@@ -224,8 +241,11 @@ describe('HtmlPanel', () => {
       state().selectNode(containerId)
       const view = await mountPanel()
       removeElement(view, textId)
-      await nextFrame()
-      expect(status()).toBe('dirty')
+      await afterDebounce()
+      expect(status()).toBe('held')
+      expect(screen.getByTestId('html-panel-status').textContent).toContain('Legal text')
+      expect(applyDisabled()).toBe(false)
+      expect(state().site!.pages[0].nodes[textId]).toBeTruthy()
 
       await clickApply()
       const dialog = confirmDialog()
@@ -239,7 +259,7 @@ describe('HtmlPanel', () => {
       })
       expect(confirmDialog()).toBeNull()
       expect(state().site!.pages[0].nodes[textId]).toBeTruthy()
-      expect(status()).toBe('dirty')
+      expect(status()).toBe('held')
       expect(docText()).not.toContain(`uid="${textId}"`)
 
       await clickApply()
@@ -258,7 +278,9 @@ describe('HtmlPanel', () => {
       state().selectNode(containerId)
       const view = await mountPanel()
       removeElement(view, refId)
-      await nextFrame()
+      await afterDebounce()
+      expect(status()).toBe('held')
+      expect(state().site!.pages[0].nodes[refId]).toBeTruthy()
       await clickApply()
       const dialog = confirmDialog()
       expect(dialog).toBeTruthy()
@@ -270,12 +292,14 @@ describe('HtmlPanel', () => {
       expect(state().site!.pages[0].nodes[refId]).toBeUndefined()
     })
 
-    it('keeps the draft verbatim and shows the banner when the subtree changes remotely', async () => {
+    it('keeps a held draft verbatim and shows the banner when the subtree changes remotely', async () => {
       const { containerId, textId, siblingId } = setup()
+      state().toggleNodeLocked(textId)
       state().selectNode(containerId)
       const view = await mountPanel()
-      replaceInDoc(view, 'Hello {page.title}', 'Mine {page.title}')
-      await nextFrame()
+      removeElement(view, textId)
+      await afterDebounce()
+      expect(status()).toBe('held')
       const draftText = docText()
       expect(screen.queryByTestId('html-panel-stale')).toBeNull()
 
@@ -296,37 +320,40 @@ describe('HtmlPanel', () => {
         fireEvent.click(screen.getByTestId('html-panel-confirm'))
       })
       const page = state().site!.pages[0]
-      expect(page.nodes[textId].props.text).toBe('Mine {page.title}')
+      expect(page.nodes[textId]).toBeUndefined()
       expect(page.nodes[siblingId].props.text).toBe('Bye')
       expect(status()).toBe('clean')
       expect(screen.queryByTestId('html-panel-stale')).toBeNull()
     })
 
-    it('takes the stale path when a tree change is undone under a dirty panel', async () => {
-      const { containerId } = setup()
+    it('takes the stale path when a tree change is undone under a held draft', async () => {
+      const { containerId, siblingId } = setup()
+      state().toggleNodeLocked(siblingId)
       state().selectNode(containerId)
       const view = await mountPanel()
       replaceInDoc(view, 'Hello {page.title}', 'First {page.title}')
-      await nextFrame()
-      await clickApply()
+      await afterDebounce()
       expect(status()).toBe('clean')
+      expect(state().site!.pages[0].nodes[containerId].children).toContain(siblingId)
 
-      replaceInDoc(editorView(), 'First {page.title}', 'Second {page.title}')
-      await nextFrame()
-      expect(status()).toBe('dirty')
+      removeElement(editorView(), siblingId)
+      await afterDebounce()
+      expect(status()).toBe('held')
       act(() => {
         state().undo()
       })
       await waitFor(() => expect(status()).toBe('stale'))
-      expect(docText()).toContain('Second {page.title}')
+      expect(docText()).not.toContain(`uid="${siblingId}"`)
+      expect(state().site!.pages[0].nodes[siblingId]).toBeTruthy()
     })
 
     it('discarding a stale draft shows the remote projection', async () => {
-      const { containerId, siblingId } = setup()
+      const { containerId, textId, siblingId } = setup()
+      state().toggleNodeLocked(textId)
       state().selectNode(containerId)
       const view = await mountPanel()
-      replaceInDoc(view, 'Hello {page.title}', 'Mine {page.title}')
-      await nextFrame()
+      removeElement(view, textId)
+      await afterDebounce()
       act(() => {
         state().updateNodeProps(siblingId, { text: 'Remote' })
       })
@@ -335,8 +362,9 @@ describe('HtmlPanel', () => {
         fireEvent.click(screen.getByTestId('html-panel-discard'))
       })
       await waitFor(() => expect(docText()).toContain('Remote'))
-      expect(docText()).not.toContain('Mine')
+      expect(docText()).toContain(`uid="${textId}"`)
       expect(status()).toBe('clean')
+      expect(state().site!.pages[0].nodes[textId]).toBeTruthy()
       expect(state().site!.pages[0].nodes[siblingId].props.text).toBe('Remote')
     })
 
@@ -358,7 +386,7 @@ describe('HtmlPanel', () => {
       state().selectNode(containerId)
       const view = await mountPanel()
       removeElement(view, textId)
-      await nextFrame()
+      await afterDebounce()
       await clickApply()
       expect(confirmDialog()!.textContent).not.toMatch(/changed/i)
 
@@ -386,9 +414,9 @@ describe('HtmlPanel', () => {
       state().renameNode(textId, 'Intro')
       state().selectNode(textId)
       const view = await mountPanel()
-      replaceInDoc(view, 'Hello', 'Orphan')
-      await nextFrame()
-      expect(status()).toBe('dirty')
+      replaceInDoc(view, 'Hello', 'Orphan</b')
+      await afterDebounce()
+      expect(status()).toBe('syntax')
 
       act(() => {
         state().deleteNode(textId)

@@ -10,7 +10,7 @@
  * the published page, and it stays editable in the Explorer Code tab. The
  * panel follows the active page, never the element selection.
  */
-import { lazy, Suspense } from 'react'
+import { lazy, Suspense, useRef } from 'react'
 import { useShallow } from 'zustand/react/shallow'
 import { findPageScript, pageScriptPath } from '@core/site-runtime'
 import type { SiteFile } from '@core/files/schemas'
@@ -18,6 +18,8 @@ import type { Page, SiteDocument } from '@core/page-tree'
 import { useEditorStore } from '@site/store/store'
 import type { EditorStore } from '@site/store/types'
 import { fileLanguage } from '@site/code-editor/fileLanguage'
+import type { CodeMirrorEditorHandle } from '@site/code-editor/CodeMirrorEditor'
+import { pushToast } from '@ui/components/Toast'
 import {
   fileRuntimeDiagnostics,
   type RuntimeScriptValidationState,
@@ -25,6 +27,7 @@ import {
 import { cn } from '@ui/cn'
 import { useDocumentSync, type DocumentSyncSource } from '../useDocumentSync'
 import { deriveJsCompletionCatalog } from '../completions'
+import { FormatButton } from '../FormatButton'
 import styles from '../EditorColumn.module.css'
 
 const CodeMirrorEditor = lazy(() => import('@site/code-editor/CodeMirrorEditor'))
@@ -77,6 +80,7 @@ export function JsPanel({ runtimeValidation }: { runtimeValidation?: RuntimeScri
   // and id first); the edited document never changes with it.
   const selectedNodeId = useEditorStore((s) => s.selectedNodeId)
   const { revision, runOwnWrite } = useDocumentSync(syncSource)
+  const editorRef = useRef<CodeMirrorEditorHandle | null>(null)
   const target = resolveTarget(inputs)
 
   if (!target) {
@@ -102,29 +106,37 @@ export function JsPanel({ runtimeValidation }: { runtimeValidation?: RuntimeScri
 
   return (
     <div className={styles.panel} data-testid="js-panel">
+      <div className={styles.toolbar}>
+        <span
+          className={cn(styles.toolbarNote, errorCount > 0 && styles.statusError)}
+          role="status"
+          data-testid="js-panel-status"
+        >
+          {path} · runs on this page only
+          {file ? '' : ' · created on first edit'}
+          {errorCount > 0 ? ` · ${errorCount} error${errorCount === 1 ? '' : 's'}` : ''}
+        </span>
+        <span className={styles.toolbarActions}>
+          <FormatButton onFormat={() => void editorRef.current?.format()} testId="js-panel-format" />
+        </span>
+      </div>
       <div className={styles.editor}>
         <Suspense fallback={<div className={styles.loading}>Loading editor</div>}>
           <CodeMirrorEditor
+            ref={editorRef}
             docKey={`js:page:${page.id}#${revision}`}
             value={file?.content ?? ''}
             language={file ? fileLanguage(file) : 'javascript'}
             changeDelayMs={JS_PANEL_SAVE_DELAY_MS}
+            lintGutter={false}
             diagnostics={diagnostics}
             filePath={file?.path}
             projectFiles={file ? site.files : undefined}
             completions={completions}
             onChange={onChange}
+            onFormatError={(message) => pushToast({ kind: 'error', title: 'Could not format the script', body: message })}
           />
         </Suspense>
-      </div>
-      <div
-        className={cn(styles.status, errorCount > 0 && styles.statusError)}
-        role="status"
-        data-testid="js-panel-status"
-      >
-        {path} · runs on this page only
-        {file ? '' : ' · created on first edit'}
-        {errorCount > 0 ? ` · ${errorCount} error${errorCount === 1 ? '' : 's'}` : ''}
       </div>
     </div>
   )

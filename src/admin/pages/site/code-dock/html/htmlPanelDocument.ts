@@ -13,7 +13,7 @@
  * The HTML is the publisher's editable projection (`RenderConfig.projection`):
  * every element carries `uid="<nodeId>"`, tokens stay verbatim, structural
  * modules render as `instatic-*` markers — the dialect `importProjectionHtml`
- * parses back.
+ * parses back — reflowed for reading by `prettyPrintProjection`.
  */
 import { registry } from '@core/module-engine'
 import type { NodeTree, Page, PageNode } from '@core/page-tree'
@@ -21,6 +21,7 @@ import { renderNode, type RenderAccumulators, type RenderConfig } from '@core/pu
 import { flattenVCToVirtualPage } from '@core/visualComponents'
 import type { EditorStore } from '@site/store/types'
 import type { SelectionScopeInputs } from '../selectionScope'
+import { prettyPrintProjection } from './prettyProjection'
 
 export interface HtmlPanelDocument {
   /** Identity of the projected document — changes when the scope changes. */
@@ -46,7 +47,7 @@ function renderProjection(page: Page, site: NonNullable<EditorStore['site']>, ro
     holeNodeIds: new Set(),
     cspSources: new Map(),
   }
-  return renderNode(rootId, config, acc)
+  return prettyPrintProjection(renderNode(rootId, config, acc))
 }
 
 export function deriveHtmlPanelDocument(inputs: SelectionScopeInputs): HtmlPanelDocument | null {

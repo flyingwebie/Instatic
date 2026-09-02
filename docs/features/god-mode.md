@@ -61,8 +61,9 @@ outlives the entitlement (preference turned off, capability revoked), an effect 
 ## Code Dock layout
 
 - **Columns** — HTML | CSS | JS side by side. Header buttons toggle each column's
-  visibility; dividers between columns drag to redistribute width (stored as flex
-  weights); the top edge drags to resize the dock height (clamped
+  visibility; the visible dividers between columns (a 1px line in a 7px grab
+  area, accent-coloured while dragging) drag to redistribute width (stored as
+  flex weights); the top edge drags to resize the dock height (clamped
   `CODE_DOCK_MIN_HEIGHT`–`CODE_DOCK_MAX_HEIGHT`). Both resize gestures write CSS
   custom properties imperatively during the drag and commit to the store once on
   pointer-up, so the layout-persistence subscriber writes localStorage once per
@@ -76,21 +77,38 @@ outlives the entitlement (preference turned off, capability revoked), an effect 
   per-workspace layout storage (`siteEditorLayoutPersistence.ts` →
   `workspaceLayoutStorage.ts`, localStorage key `instatic-editor-layout-v2`) and
   restored (validated, clamped) at store hydration.
+- **Expand** — each column title carries an expand button that opens that
+  panel in a full-size `Dialog` (`size="full"`: the viewport minus a margin)
+  for a bigger editing area. While expanded the panel renders only in the
+  dialog and its column shows a placeholder; closing the dialog returns it.
+  The move remounts the panel, which is why the panels' unapplied buffers
+  live in the store — `codeDockDrafts` on the dock slice
+  (`store/slices/codeDockDrafts.ts`, keyed by document, bounded to 20, not
+  persisted): the HTML panel's held / stale / unparsable drafts and a CSS
+  buffer that does not parse yet are restored on remount; the JS panel and a
+  parsing CSS buffer flush on unmount, so nothing is lost either way. Local
+  dock state, not persisted.
 - **Bundle** — the dock is behind a `React.lazy` boundary; nothing God-Mode-
-  specific loads until the mode is activated. The future CodeMirror panels stay
-  behind the same boundary.
+  specific loads until the mode is activated. The CodeMirror panels stay
+  behind the same boundary, and Prettier (the Format action) behind another,
+  loaded the first time a document is formatted.
 
 ## HTML panel
 
 The HTML column (`src/admin/pages/site/code-dock/html/`) is the editable
-projection of the current selection, applied back to the tree on demand.
+projection of the current selection, applied back to the tree as you type.
 
 - **Read side** — `deriveHtmlPanelDocument` (`htmlPanelDocument.ts`) renders
   the scoped subtree with the publisher's projection mode
   (`RenderConfig.projection`, see [`publisher.md`](publisher.md) → "Editable
   HTML projection"): every element carries `uid`, dynamic tokens stay
   verbatim, and loops / Component refs / slots render as `instatic-*`
-  markers. Scope: an element selected in the active tree → that subtree;
+  markers — reflowed for reading by `prettyPrintProjection`
+  (`html/prettyProjection.ts`: element-only children on indented lines,
+  text content kept inline, nothing touched inside `pre` / `textarea` /
+  `script` / `style`; safe because the importer ignores whitespace between
+  element children and collapses it inside text leaves). Scope: an element
+  selected in the active tree → that subtree;
   nothing selected → the whole active document (the page, or the Component
   **definition** in VC canvas mode, both fully editable, slot outlets
   visible); a node selected **inside a Component instance** on the consumer
@@ -98,18 +116,24 @@ projection of the current selection, applied back to the tree on demand.
   selectable while a page is active) → that subtree from the definition,
   **read-only**, with an "Open component definition" button that switches
   the active document to the Component.
-- **Write side** — Apply is explicit: the Apply button or **⌘↩** (the
-  editor's `onSubmit`) runs `importProjectionHtml` against the projected
-  tree and `applyProjectionImport` (site slice,
-  `site/projectionApplyActions.ts`), which replaces the projected subtree
-  with the result's nodes in ONE `mutateActiveTreeAndSite` recipe: matched
-  uids keep their ids and metadata, new tags become nodes, vanished uids are
-  deleted and pruned from the canvas selection, class names link to registry
-  classes exactly as the lossy import does. One apply = one tree-undo step;
-  canvas and layer panel repaint from the store. Apply is **gated**: nothing
-  touches the tree while the document has syntax errors (`lintSyntax`
-  diagnostics inline, error count in the toolbar), and never in the
-  read-only view.
+- **Write side** — edits apply **live**: every debounced change (300 ms,
+  `HTML_PANEL_APPLY_DELAY_MS`, one flush = one tree-undo step) that parses
+  runs `importProjectionHtml` against the projected tree and, when the
+  result is harmless, `applyProjectionImport` (site slice,
+  `site/projectionApplyActions.ts`) at once, which replaces the projected
+  subtree with the result's nodes in ONE `mutateActiveTreeAndSite` recipe:
+  matched uids keep their ids and metadata, new tags become nodes, vanished
+  uids are deleted and pruned from the canvas selection, class names link to
+  registry classes exactly as the lossy import does; canvas and layer panel
+  repaint from the store. The buffer is then brought up to the fresh
+  projection **in place** (`CodeMirrorEditor`'s `syncValue`: the minimal
+  line edits from `code-editor/documentDiff.ts`, so the caret, history and
+  folds survive) — a typed `<p>` gains its `uid`, and the text settles into
+  the canonical reflow. Nothing touches the tree while the document has
+  syntax errors (`lintSyntax` diagnostics inline, count in the toolbar), and
+  never in the read-only view. A change the guardrails below hold is
+  applied through the explicit **Apply** button or **⌘↩** (the editor's
+  `onSubmit`) with a confirm dialog; the status names what is held.
 - **uid marks** — the projection's `uid="…"` attributes are for the import,
   not the author, so the editor shows each one as a clickable Instatic mark
   instead of text (`CodeMirrorEditor`'s `foldUidAttributes`,
@@ -117,19 +141,20 @@ projection of the current selection, applied back to the tree on demand.
   again hides it. The text stays in the buffer untouched — the apply path
   still reads it — and a hidden attribute is an atomic range, so the caret
   steps over it and a backspace removes it whole.
-- **Drafts** — unapplied edits are kept per scope (keyed by the projected
-  document, bounded to the 20 most recent), so changing selection never
-  discards them and switching back restores them; the toolbar shows "Unapplied changes" and the apply result
-  ("Applied · 2 patched · 1 created"). An apply whose fresh projection differs
-  from the typed text re-keys the buffer to the normalised output.
+- **Drafts** — unapplied edits (held by a guardrail, stale, or not parsing)
+  are kept per scope in the store (`codeDockDrafts`, keyed by the projected
+  document, bounded to the 20 most recent), so changing selection, expanding
+  the panel, or the tab fallback never discards them and coming back restores
+  them; the toolbar shows why the draft is held and the last apply result
+  ("Applied · 2 patched · 1 created").
 - **Sync** — a clean scope re-syncs its buffer on external tree changes
   (canvas undo, a co-editor) through the shared `useDocumentSync`, with no
   banner; a dirty scope keeps its draft verbatim and its buffer mounted
   (`holdRemounts`), so caret and text history survive every store change —
   including the remote ones the stale banner reports.
-- **Guardrails** — two, and every other apply is silent. Each draft records
-  the projection it started from (`baseHtml`), so both are *derived* from
-  state rather than tracked by subscriptions:
+- **Guardrails** — two, and every other change applies live. Each draft
+  records the projection it started from (`baseHtml`), so both are *derived*
+  from state rather than tracked by subscriptions:
   - **Stale draft.** A dirty scope whose current projection differs from
     the draft's baseline — a co-editor, an MCP agent, or a canvas undo
     changed the projected subtree — shows a "Content changed remotely"
@@ -224,7 +249,9 @@ back while the document has syntax errors — the CSS parser silently swallows
 everything after a missing brace, and a live "replace" apply would otherwise
 read that as deletions. The theme moved to `code-editor/codeMirrorTheme.ts`;
 the `codemirror-lazy-only` gate now allowlists the lazy chunk's helper modules
-and pins that nothing outside the chunk imports them.
+and pins that nothing outside the chunk imports them. Typing `;` after a bare
+`--name` value writes `prop: var(--name);` (`code-editor/cssVarShorthand.ts`,
+an input handler installed for CSS documents).
 
 **Sync** — the editor is remounted only when the projected text changes for a
 reason other than the panel's own apply (selection change, canvas Cmd+Z, a
@@ -340,6 +367,32 @@ data — page scripts are `.js`, so the JS panel is never on that path.)
   `getElementById`. Selection changes update the catalog, never the
   document.
 
+## Editor assists
+
+Shared by the three panels, on top of the language defaults:
+
+- **Format** — the toolbar's Format button, or **⇧⌥F** in the editor
+  (`codeEditor.format` keybinding), runs Prettier over the buffer
+  (`code-editor/formatDocument.ts`, through the editor's `format()` ref
+  handle): the html / postcss / babel / typescript plugins are loaded on
+  demand in their own chunks, the result is dispatched as one ordinary edit
+  (so a live-applying panel sees it and it undoes as one step), and the
+  caret lands where Prettier maps it. Scripts use the repo's own style (no
+  semicolons, single quotes, 100 columns). A document that does not parse
+  reports the parser's message through `onFormatError` — a toast. The HTML
+  projection additionally arrives pre-reflowed (see the HTML panel) and
+  settles back into that reflow after every live apply.
+- **Tab accepts a completion** (Enter still does), via a `Prec.high` keymap.
+- **No lint gutter** — the dock panels pass `lintGutter={false}`: the gutter
+  column only ever showed one marker per line for diagnostics the panels
+  already show inline (squiggle + hover message) and count in their status,
+  so it was an empty third column most of the time. The Explorer Code editor
+  keeps it (TypeScript errors are its main signal).
+- **Breadcrumbs** (HTML panel) — the cursor element's ancestry, root first
+  (`getAncestors` on the projected tree, layer-panel names), rendered under
+  the toolbar; click any crumb to select that ancestor (re-scoping through
+  the normal selection flow); the selected element's crumb is pressed.
+
 ## Reverse selection sync
 
 The HTML panel is also an inspector: the projection's `uid` attributes map
@@ -437,4 +490,18 @@ lazy chunk; `CodeMirrorEditor` props `onCursorUid` / `onTagClick`).
   outside), and `onCursorUid` reports over a mounted editor.
 - `src/__tests__/god-mode/htmlPanelInspector.test.tsx` — the panel hovers
   the cursor's node, ignores uid-less and unknown uids, re-scopes on select,
-  stays inert in the read-only view, and drops only its own hover on unmount.
+  shows and follows breadcrumbs, stays inert in the read-only view, and drops
+  only its own hover on unmount.
+- `src/__tests__/code-editor/documentDiff.test.ts` — minimal in-place line
+  edits between two documents (multi-region, end-of-document, fallback).
+- `src/__tests__/god-mode/prettyProjection.test.ts` — the projection reflow:
+  element-only children indented, text inline, raw-text elements untouched,
+  idempotent, no markup lost.
+- `src/__tests__/code-editor/editorAssist.test.tsx` — Tab accepts a
+  completion, `--name;` expands to `var(--name);`, bare `--` completions
+  apply `var()`, `syncValue` patches in place without re-entering
+  `onChange`, the lint gutter opt-out, Prettier formatting through the
+  handle with the caret kept, unformattable documents reported.
+- `src/__tests__/god-mode/codeDockDrafts.test.ts` — the bounded draft map
+  and the slice action; `htmlPanel.test.tsx` / `cssPanel.test.tsx` cover a
+  held HTML draft and an unparsable CSS buffer surviving a panel remount.

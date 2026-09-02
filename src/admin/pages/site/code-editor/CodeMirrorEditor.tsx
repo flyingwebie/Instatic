@@ -28,10 +28,11 @@
  * @see Constraint #402 — no inline styles
  */
 
-import { useRef, useEffect, useEffectEvent, useCallback } from 'react'
+import { useRef, useEffect, useEffectEvent, useCallback, useImperativeHandle, type Ref } from 'react'
 import { EditorView, basicSetup } from 'codemirror'
-import { EditorState, Prec } from '@codemirror/state'
+import { Annotation, EditorState, Prec } from '@codemirror/state'
 import {
+  acceptCompletion,
   autocompletion,
   type CompletionContext,
   type CompletionResult,
@@ -60,6 +61,9 @@ import { uidAttributes } from './uidAttributes'
 import { syntaxDiagnostics } from './syntaxDiagnostics'
 import { contextCompletions } from './contextCompletions'
 import { uidInspector } from './uidInspector'
+import { cssVarShorthand } from './cssVarShorthand'
+import { documentChanges } from './documentDiff'
+import { formatDocument, isFormattableLanguage, type FormatResult } from './formatDocument'
 import type { EditorCompletionCatalog } from './completionCatalog'
 
 // ---------------------------------------------------------------------------
@@ -176,7 +180,28 @@ interface CodeMirrorEditorProps {
   onCursorUid?: (uid: string | null) => void
   /** Reports the `uid` of the element whose tag name was clicked. */
   onTagClick?: (uid: string) => void
+  /**
+   * Follow `value` while mounted: when it changes for the same `docKey`,
+   * the buffer is patched IN PLACE with the minimal line edits (caret,
+   * history and folds survive) instead of ignoring it. Skipped while an
+   * edit is still pending, which would be overwritten by the flush anyway.
+   * Such patches never re-enter `onChange`.
+   */
+  syncValue?: boolean
+  /** Show the lint marker gutter column (diagnostics stay inline without it). */
+  lintGutter?: boolean
+  /** Formatting (Shift-Alt-F or `format()`) failed — e.g. the document does not parse. */
+  onFormatError?: (message: string) => void
+  ref?: Ref<CodeMirrorEditorHandle>
 }
+
+export interface CodeMirrorEditorHandle {
+  /** Format the document with Prettier; resolves once the buffer is updated. */
+  format: () => Promise<FormatResult>
+}
+
+/** Marks a transaction that brings the buffer up to date with `value` — not an author edit. */
+const valueSync = Annotation.define<boolean>()
 
 const rejectAllChanges = EditorState.changeFilter.of(() => false)
 const readOnlyExtensions = [EditorState.readOnly.of(true), EditorView.editable.of(false), rejectAllChanges]
@@ -346,6 +371,10 @@ export default function CodeMirrorEditor({
   completions,
   onCursorUid,
   onTagClick,
+  syncValue = false,
+  lintGutter: showLintGutter = true,
+  onFormatError,
+  ref,
 }: CodeMirrorEditorProps) {
   const containerRef = useRef<HTMLDivElement | null>(null)
   const viewRef = useRef<EditorView | null>(null)
@@ -390,6 +419,24 @@ export default function CodeMirrorEditor({
     onCursorUid: (uid: string | null) => onCursorUidRef.current?.(uid),
     onTagClick: (uid: string) => onTagClickRef.current?.(uid),
   })
+  const onFormatErrorRef = useRef(onFormatError)
+  useEffect(() => {
+    onFormatErrorRef.current = onFormatError
+  }, [onFormatError])
+
+  const format = async (): Promise<FormatResult> => {
+    const view = viewRef.current
+    if (!view) return { ok: false, error: 'No document is open' }
+    if (!isFormattableLanguage(language)) return { ok: false, error: 'This document type cannot be formatted' }
+    const result = await formatDocument(view, language)
+    if (!result.ok) onFormatErrorRef.current?.(result.error)
+    return result
+  }
+  const formatRef = useRef(format)
+  useEffect(() => {
+    formatRef.current = format
+  })
+  useImperativeHandle(ref, () => ({ format: () => formatRef.current() }), [])
 
   // useCallback kept: stable identity for the [flush] useEffect dep array (exhaustive-deps).
   // Flush pending content to the store immediately (called on doc switch).
@@ -426,16 +473,27 @@ export default function CodeMirrorEditor({
       state: EditorState.create({
         doc: value,
         extensions: [
-          // Ahead of basicSetup so Mod-Enter wins over the default Enter binding.
-          Prec.high(keymap.of([{
-            key: 'Mod-Enter',
-            run: () => {
-              if (!onSubmitRef.current) return false
-              flush()
-              onSubmitRef.current()
-              return true
+          // Ahead of basicSetup so Mod-Enter wins over the default Enter
+          // binding, Tab accepts an open completion, and Shift-Alt-F formats.
+          Prec.high(keymap.of([
+            {
+              key: 'Mod-Enter',
+              run: () => {
+                if (!onSubmitRef.current) return false
+                flush()
+                onSubmitRef.current()
+                return true
+              },
             },
-          }])),
+            { key: 'Tab', run: acceptCompletion },
+            {
+              key: 'Shift-Alt-f',
+              run: () => {
+                void formatRef.current()
+                return true
+              },
+            },
+          ])),
           basicSetup,
           ...getLanguageExtensions(language),
           ...(typeScriptClient && filePath
@@ -446,15 +504,17 @@ export default function CodeMirrorEditor({
             : []),
           ...(completions ? [contextCompletions(getCompletions)] : []),
           ...(onCursorUid || onTagClick ? [uidInspector(inspectorHandlers)] : []),
+          ...(language === 'css' ? [cssVarShorthand()] : []),
           readableSyntaxHighlighting,
           editorTheme,
           ...(lockedRanges.length > 0 ? [lockedRegions(lockedRanges)] : []),
           ...(readOnly ? readOnlyExtensions : []),
           ...(foldUidAttributes ? [uidAttributes()] : []),
           editorTooltipBoundary,
-          lintGutter(),
+          ...(showLintGutter ? [lintGutter()] : []),
           EditorView.updateListener.of((update) => {
             if (!update.docChanged) return
+            const synced = update.transactions.every((tr) => tr.annotation(valueSync) === true)
             const content = update.state.doc.toString()
             if (typeScriptClient && filePath) {
               typeScriptClient.updateFile(filePath, content)
@@ -478,6 +538,9 @@ export default function CodeMirrorEditor({
                 )
               })
             }
+            // A value sync is the parent's own text arriving; it is not an
+            // edit to report back.
+            if (synced) return
             const info: EditorChangeInfo = { syntaxErrorCount: syntax.length }
             if (changeDelayMs <= 0) {
               if (timerRef.current) {
@@ -578,6 +641,15 @@ export default function CodeMirrorEditor({
     ))
     refreshTypeScriptDiagnosticsRef.current?.()
   }, [filePath, language, projectFiles])
+
+  useEffect(() => {
+    if (!syncValue) return
+    const view = viewRef.current
+    if (!view || pendingChangeRef.current !== null) return
+    const current = view.state.doc.toString()
+    if (current === value) return
+    view.dispatch({ changes: documentChanges(current, value), annotations: [valueSync.of(true)] })
+  }, [value, syncValue])
 
   useEffect(() => {
     const view = viewRef.current

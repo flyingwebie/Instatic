@@ -197,6 +197,17 @@ export const KEYBINDINGS: ReadonlyArray<KeybindingDefinition> = [
     capability: 'site.structure.edit',
   },
 
+  // Handled by every code editor's own CodeMirror keymap (and the Code
+  // Dock's Format buttons) — registered for the label and the help screen.
+  {
+    commandId: 'codeEditor.format',
+    displayName: 'Format code document',
+    shortcut: { mac: '\u21e7\u2325F', win: 'Shift+Alt+F' },
+    ariaKeyshortcuts: 'Shift+Alt+F',
+    match: (e) => e.shiftKey && e.altKey && !e.metaKey && !e.ctrlKey && e.key.toLowerCase() === 'f',
+    scope: 'editor',
+  },
+
   // ── Canvas + Layers tree (layer operations) ─────────────────────────────────
 
   {
