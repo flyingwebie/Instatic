@@ -30,13 +30,13 @@
 
 import { useRef, useEffect, useEffectEvent, useCallback } from 'react'
 import { EditorView, basicSetup } from 'codemirror'
-import { EditorState } from '@codemirror/state'
+import { EditorState, Prec } from '@codemirror/state'
 import {
   autocompletion,
   type CompletionContext,
   type CompletionResult,
 } from '@codemirror/autocomplete'
-import { hoverTooltip, tooltips, type Tooltip } from '@codemirror/view'
+import { hoverTooltip, keymap, tooltips, type Tooltip } from '@codemirror/view'
 import { javascript } from '@codemirror/lang-javascript'
 import { css } from '@codemirror/lang-css'
 import { json } from '@codemirror/lang-json'
@@ -146,7 +146,14 @@ interface CodeMirrorEditorProps {
    * them rejected). They follow edits made above them.
    */
   lockedRanges?: readonly LockedRange[]
+  /** View-only document: every change is rejected and the surface is not editable. */
+  readOnly?: boolean
+  /** Mod-Enter: the pending text is flushed to `onChange`, then this runs. */
+  onSubmit?: () => void
 }
+
+const rejectAllChanges = EditorState.changeFilter.of(() => false)
+const readOnlyExtensions = [EditorState.readOnly.of(true), EditorView.editable.of(false), rejectAllChanges]
 
 export interface EditorChangeInfo {
   /** Parser error count at the time of the change (always 0 unless `lintSyntax`). */
@@ -307,6 +314,8 @@ export default function CodeMirrorEditor({
   onTypeScriptDiagnosticsChange,
   lintSyntax = false,
   lockedRanges = EMPTY_LOCKED_RANGES,
+  readOnly = false,
+  onSubmit,
 }: CodeMirrorEditorProps) {
   const containerRef = useRef<HTMLDivElement | null>(null)
   const viewRef = useRef<EditorView | null>(null)
@@ -332,6 +341,10 @@ export default function CodeMirrorEditor({
   useEffect(() => {
     onTypeScriptDiagnosticsChangeRef.current = onTypeScriptDiagnosticsChange
   }, [onTypeScriptDiagnosticsChange])
+  const onSubmitRef = useRef(onSubmit)
+  useEffect(() => {
+    onSubmitRef.current = onSubmit
+  }, [onSubmit])
 
   // useCallback kept: stable identity for the [flush] useEffect dep array (exhaustive-deps).
   // Flush pending content to the store immediately (called on doc switch).
@@ -368,6 +381,16 @@ export default function CodeMirrorEditor({
       state: EditorState.create({
         doc: value,
         extensions: [
+          // Ahead of basicSetup so Mod-Enter wins over the default Enter binding.
+          Prec.high(keymap.of([{
+            key: 'Mod-Enter',
+            run: () => {
+              if (!onSubmitRef.current) return false
+              flush()
+              onSubmitRef.current()
+              return true
+            },
+          }])),
           basicSetup,
           ...getLanguageExtensions(language),
           ...(typeScriptClient && filePath
@@ -379,6 +402,7 @@ export default function CodeMirrorEditor({
           readableSyntaxHighlighting,
           editorTheme,
           ...(lockedRanges.length > 0 ? [lockedRegions(lockedRanges)] : []),
+          ...(readOnly ? readOnlyExtensions : []),
           editorTooltipBoundary,
           lintGutter(),
           EditorView.updateListener.of((update) => {

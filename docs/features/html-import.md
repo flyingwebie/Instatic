@@ -182,7 +182,9 @@ is the inverse of the publisher's editable HTML projection
 projection HTML back into a **replacement subtree** for `rootId`, preserving node
 identity via the `uid` attributes the projection stamps on every element. It is
 **pure** — the base tree is never mutated; callers inspect the diff first, then
-splice `result.nodes` in and reindex parents.
+splice `result.nodes` in and reindex parents. The editor's splice is the site
+slice's `applyProjectionImport` (one undo step, class-name linking, selection
+pruning — see [`god-mode.md`](god-mode.md) → "HTML panel").
 
 How each element is treated:
 

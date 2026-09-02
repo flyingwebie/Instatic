@@ -21,8 +21,8 @@ import {
   type StylesheetProjection,
 } from '@core/cssProjection'
 import type { BreakpointHint } from '@core/siteImport'
-import type { EditorStore } from '@site/store/types'
-import { getActiveTree, type ActiveTreeInputs } from '@site/store/slices/selectionSlice'
+import { getActiveTree } from '@site/store/slices/selectionSlice'
+import type { SelectionScopeInputs } from '../selectionScope'
 import {
   authorCanvasRoot,
   countAmbientRuleMatches,
@@ -75,11 +75,8 @@ function pageAmbientRules(rules: Record<string, StyleRule>, root: Element | null
     .filter((rule) => countAmbientRuleMatches(rule, root) > 0)
 }
 
-/** The editor-state fields the derivation reads — a stable, shallow-comparable selection. */
-export type CssPanelInputs = ActiveTreeInputs & Pick<EditorStore, 'selectedNodeId'>
-
 export function deriveCssPanelDocument(
-  state: CssPanelInputs,
+  state: SelectionScopeInputs,
   canvas: CssPanelCanvas,
 ): CssPanelDocument | null {
   const { site } = state

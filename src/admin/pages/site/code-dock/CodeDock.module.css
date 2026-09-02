@@ -102,19 +102,6 @@
   color: var(--text-subtle);
 }
 
-.columnBody {
-  flex: 1;
-  min-height: 0;
-  overflow: auto;
-  padding: 0 var(--space-s) var(--space-s);
-}
-
-.placeholder {
-  margin: 0;
-  font-size: var(--text-s);
-  color: var(--text-muted);
-}
-
 .allHidden {
   flex: 1;
   display: flex;

@@ -33,7 +33,7 @@
  */
 
 import { registry } from '@core/module-engine'
-import type { NodeTree, PageNode, StyleRule } from '@core/page-tree'
+import { collectSubtreeIds, type NodeTree, type PageNode, type StyleRule } from '@core/page-tree'
 import { deepEqual } from '@core/utils/deepEqual'
 import { parseHtml } from './parseHtml'
 import { stripUnsafe, collectStyleCss } from './stripUnsafe'
@@ -115,20 +115,6 @@ const STRUCTURAL_MODULE_IDS = new Set([
   'base.slot-outlet',
 ])
 
-/** All node ids in the subtree rooted at `rootId` (root included). */
-function collectSubtreeIds(tree: NodeTree<PageNode>, rootId: string): Set<string> {
-  const ids = new Set<string>()
-  const stack = [rootId]
-  while (stack.length > 0) {
-    const id = stack.pop()!
-    if (ids.has(id)) continue
-    const node = tree.nodes[id]
-    if (!node) continue
-    ids.add(id)
-    for (const childId of node.children) stack.push(childId)
-  }
-  return ids
-}
 
 /**
  * Read every element's `uid` attribute into a map and REMOVE the attribute,
@@ -296,7 +282,7 @@ function computeDiff(
   rootId: string,
   nodes: Record<string, PageNode>,
 ): ProjectionImportDiff {
-  const baseIds = collectSubtreeIds(tree, rootId)
+  const baseIds = new Set(collectSubtreeIds(tree.nodes, rootId))
 
   const createdIds: string[] = []
   const patchedIds: string[] = []
@@ -362,7 +348,7 @@ export function importProjectionHtml(
   // Matching candidates: the projected subtree only. A uid pointing anywhere
   // else in the tree cannot be spliced by a subtree replace, so it mints a
   // new node instead of stealing one.
-  const subtreeIds = collectSubtreeIds(tree, rootId)
+  const subtreeIds = new Set(collectSubtreeIds(tree.nodes, rootId))
 
   // Root-descriptor mode: the source is the projection of the root element
   // itself. Anything else (page projection, wrapped/removed root) preserves

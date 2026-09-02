@@ -22,7 +22,8 @@ import { findRenderedCanvasNodeElement } from '@site/canvas/canvasNodeLookup'
 import type { EditorChangeInfo } from '@site/code-editor/CodeMirrorEditor'
 import { cn } from '@ui/cn'
 import { useDocumentSync, type DocumentSyncSource } from '../useDocumentSync'
-import { deriveCssPanelDocument, type CssPanelCanvas, type CssPanelDocument, type CssPanelInputs } from './cssPanelDocument'
+import { deriveCssPanelDocument, type CssPanelCanvas, type CssPanelDocument } from './cssPanelDocument'
+import { selectSelectionScope, selectionScopeEqual, type SelectionScopeInputs } from '../selectionScope'
 import styles from '../EditorColumn.module.css'
 
 const CodeMirrorEditor = lazy(() => import('@site/code-editor/CodeMirrorEditor'))
@@ -33,13 +34,6 @@ export const CSS_PANEL_APPLY_DELAY_MS = 300
 const canvas: CssPanelCanvas = {
   findNodeElement: (nodeId) => findRenderedCanvasNodeElement(nodeId),
 }
-
-const selectInputs = (s: CssPanelInputs): CssPanelInputs => ({
-  site: s.site,
-  activeDocument: s.activeDocument,
-  activePageId: s.activePageId,
-  selectedNodeId: s.selectedNodeId,
-})
 
 type PanelStatus =
   | { kind: 'idle' }
@@ -60,13 +54,9 @@ function statusText(status: PanelStatus): string {
   }
 }
 
-const syncSource: DocumentSyncSource<CssPanelInputs> = {
-  select: selectInputs,
-  equal: (a, b) =>
-    a.site === b.site
-    && a.activeDocument === b.activeDocument
-    && a.activePageId === b.activePageId
-    && a.selectedNodeId === b.selectedNodeId,
+const syncSource: DocumentSyncSource<SelectionScopeInputs> = {
+  select: selectSelectionScope,
+  equal: selectionScopeEqual,
   read: (inputs) => {
     const next = deriveCssPanelDocument(inputs, canvas)
     return next ? { docKey: next.docKey, text: next.projection.text } : null
@@ -74,7 +64,7 @@ const syncSource: DocumentSyncSource<CssPanelInputs> = {
 }
 
 export function CssPanel() {
-  const inputs = useEditorStore(useShallow(selectInputs))
+  const inputs = useEditorStore(useShallow(selectSelectionScope))
   const applyStylesheetEdit = useEditorStore((s) => s.applyStylesheetEdit)
   const document: CssPanelDocument | null = deriveCssPanelDocument(inputs, canvas)
   // Status is remembered with the scope it belongs to, so a scope change

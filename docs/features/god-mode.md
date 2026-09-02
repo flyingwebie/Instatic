@@ -10,9 +10,10 @@ Current status: the **shell** (toggle, dock layout, persistence), the
 **editable HTML projection render** (`RenderConfig.projection`, see
 [`publisher.md`](publisher.md) → "Editable HTML projection"), the
 **uid-preserving HTML import** (`importProjectionHtml`, see
-[`html-import.md`](html-import.md) → "Uid-preserving projection import"), the
-**CSS panel** and the **JS panel** (below) are implemented. The HTML panel is
-a placeholder; its editor and the panels' autocomplete land in follow-up
+[`html-import.md`](html-import.md) → "Uid-preserving projection import"), and
+all three panels — **HTML**, **CSS**, **JS** (below) — are implemented. The
+HTML panel's apply guardrails (destructive-diff confirm, stale-draft banner),
+reverse selection sync, and the panels' autocomplete land in follow-up
 changes.
 
 ## Enabling and entering
@@ -77,6 +78,47 @@ outlives the entitlement (preference turned off, capability revoked), an effect 
 - **Bundle** — the dock is behind a `React.lazy` boundary; nothing God-Mode-
   specific loads until the mode is activated. The future CodeMirror panels stay
   behind the same boundary.
+
+## HTML panel
+
+The HTML column (`src/admin/pages/site/code-dock/html/`) is the editable
+projection of the current selection, applied back to the tree on demand.
+
+- **Read side** — `deriveHtmlPanelDocument` (`htmlPanelDocument.ts`) renders
+  the scoped subtree with the publisher's projection mode
+  (`RenderConfig.projection`, see [`publisher.md`](publisher.md) → "Editable
+  HTML projection"): every element carries `uid`, dynamic tokens stay
+  verbatim, and loops / Component refs / slots render as `instatic-*`
+  markers. Scope: an element selected in the active tree → that subtree;
+  nothing selected → the whole active document (the page, or the Component
+  **definition** in VC canvas mode, both fully editable, slot outlets
+  visible); a node selected **inside a Component instance** on the consumer
+  side (the canvas renders definition internals, so their ids are
+  selectable while a page is active) → that subtree from the definition,
+  **read-only**, with an "Open component definition" button that switches
+  the active document to the Component.
+- **Write side** — Apply is explicit: the Apply button or **⌘↩** (the
+  editor's `onSubmit`) runs `importProjectionHtml` against the projected
+  tree and `applyProjectionImport` (site slice,
+  `site/projectionApplyActions.ts`), which replaces the projected subtree
+  with the result's nodes in ONE `mutateActiveTreeAndSite` recipe: matched
+  uids keep their ids and metadata, new tags become nodes, vanished uids are
+  deleted and pruned from the canvas selection, class names link to registry
+  classes exactly as the lossy import does. One apply = one tree-undo step;
+  canvas and layer panel repaint from the store. Apply is **gated**: nothing
+  touches the tree while the document has syntax errors (`lintSyntax`
+  diagnostics inline, error count in the toolbar), and never in the
+  read-only view.
+- **Drafts** — unapplied edits are kept per scope (keyed by the projected
+  document, bounded to the 20 most recent), so changing selection never
+  discards them and switching back restores them; the toolbar shows "Unapplied changes" and the apply result
+  ("Applied · 2 patched · 1 created"). An apply whose fresh projection differs
+  from the typed text re-keys the buffer to the normalised output.
+- **Sync** — a clean scope re-syncs its buffer on external tree changes
+  (canvas undo, a co-editor) through the shared `useDocumentSync`; a dirty
+  scope keeps its draft verbatim and its buffer mounted (`holdRemounts`),
+  so caret and text history survive unrelated store changes. The
+  stale-draft banner and the destructive-diff confirm are ticket 07.
 
 ## CSS panel
 
@@ -184,12 +226,12 @@ with no new publish path.
   the same `useDocumentSync` hook the CSS panel uses (`code-dock/
   useDocumentSync.ts`).
 
-## Planned panel semantics (follow-up tickets)
+## Planned follow-ups
 
-The HTML panel renders/edits the page tree via the uid-preserving import.
-Selection in the layer panel scopes the HTML and CSS views; autocomplete
-covers tags, classes, published-site CSS variables, and dynamic-data tokens.
-See `.scratch/god-mode/spec.md` for the full design.
+HTML apply guardrails (destructive-diff confirm, stale-draft banner),
+reverse selection sync from the HTML panel, and autocomplete (tags, classes,
+published-site CSS variables, dynamic-data tokens). See
+`.scratch/god-mode/spec.md` for the full design.
 
 ## Tests
 
@@ -226,3 +268,14 @@ See `.scratch/god-mode/spec.md` for the full design.
 - `src/__tests__/god-mode/jsPanel.test.tsx` — the panel over real
   CodeMirror: lazy creation on first edit, live saves, selection-independent,
   page switch with flushed pending edit, undo re-sync.
+- `src/__tests__/editor-store/applyProjectionImport.test.ts` —
+  `applyProjectionImport`: patch in place with identity/metadata kept,
+  create/delete with selection pruning, page-root apply, one undo step.
+- `src/__tests__/god-mode/htmlPanelDocument.test.ts` — scope derivation:
+  selection, page, VC definition, read-only Component internals.
+- `src/__tests__/god-mode/htmlPanel.test.tsx` — the panel over real
+  CodeMirror: explicit apply as one undo step, syntax gating, per-scope
+  drafts, read-only internals + jump to definition, token / `instatic-*`
+  round trip.
+- `src/__tests__/code-editor/editorSubmitReadOnly.test.tsx` — `onSubmit`
+  (Mod-Enter after flush) and `readOnly`.

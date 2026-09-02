@@ -2,9 +2,9 @@
  * CodeDock — the God Mode bottom region hosting the HTML | CSS | JS code
  * panels: layout, per-column show/hide, column and height resizing,
  * narrow-window tab fallback, and layout persistence (via the uiSlice fields
- * projected by siteEditorLayoutPersistence). The CSS column hosts the live
- * style-rule editor (`./css`), the JS column the page-script editor
- * (`./js`); HTML is a placeholder until its ticket lands.
+ * projected by siteEditorLayoutPersistence). The columns host the HTML
+ * projection editor (`./html`), the live style-rule editor (`./css`) and
+ * the page-script editor (`./js`).
  *
  * Resize model (matches SidebarResizeHandle's): pointer drags write CSS
  * custom properties on the dock element imperatively for a 60fps live drag,
@@ -21,6 +21,7 @@ import {
 } from '@site/store/slices/codeDockSlice'
 import { Button } from '@ui/components/Button'
 import { cn } from '@ui/cn'
+import { HtmlPanel } from './html'
 import { CssPanel } from './css'
 import { JsPanel } from './js'
 import type { RuntimeScriptValidationState } from '@site/hooks/useRuntimeScriptDiagnostics'
@@ -292,14 +293,12 @@ function CodeDockPanel({
       data-testid={`code-dock-panel-${id}`}
     >
       <div className={styles.columnTitle}>{label}</div>
-      {id === 'css' ? (
+      {id === 'html' ? (
+        <HtmlPanel />
+      ) : id === 'css' ? (
         <CssPanel />
-      ) : id === 'js' ? (
-        <JsPanel runtimeValidation={runtimeValidation} />
       ) : (
-        <div className={styles.columnBody}>
-          <p className={styles.placeholder}>The {label} editor lands in an upcoming God Mode update.</p>
-        </div>
+        <JsPanel runtimeValidation={runtimeValidation} />
       )}
     </section>
   )

@@ -30,6 +30,16 @@ export interface DocumentSyncSource<I> {
   read: (inputs: I) => ProjectedDocument | null
 }
 
+export interface DocumentSyncOptions {
+  /**
+   * While true, an external change to the same document updates the
+   * baseline but does NOT remount the buffer — for panels holding an
+   * unapplied draft, whose caret and text history must survive unrelated
+   * store changes (the draft itself is kept by the panel).
+   */
+  holdRemounts?: boolean
+}
+
 export interface DocumentSync {
   /** Append to the editor's key: changes when an external edit needs a remount. */
   revision: number
@@ -37,10 +47,17 @@ export interface DocumentSync {
   runOwnWrite: <T>(write: () => T) => T
 }
 
-export function useDocumentSync<I>(source: DocumentSyncSource<I>): DocumentSync {
+export function useDocumentSync<I>(
+  source: DocumentSyncSource<I>,
+  options: DocumentSyncOptions = {},
+): DocumentSync {
   const [revision, setRevision] = useState(0)
   const syncedRef = useRef<ProjectedDocument | null>(null)
   const writingRef = useRef(false)
+  const holdRef = useRef(options.holdRemounts === true)
+  useEffect(() => {
+    holdRef.current = options.holdRemounts === true
+  }, [options.holdRemounts])
 
   useEffect(() => {
     const read = () => source.read(source.select(useEditorStore.getState()))
@@ -54,7 +71,7 @@ export function useDocumentSync<I>(source: DocumentSyncSource<I>): DocumentSync 
       const next = read()
       const synced = syncedRef.current
       syncedRef.current = next
-      if (next && synced && next.docKey === synced.docKey && next.text !== synced.text) {
+      if (next && synced && next.docKey === synced.docKey && next.text !== synced.text && !holdRef.current) {
         setRevision((r) => r + 1)
       }
     })

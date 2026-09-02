@@ -184,6 +184,19 @@ export const KEYBINDINGS: ReadonlyArray<KeybindingDefinition> = [
     capability: 'site.structure.edit',
   },
 
+  // Dispatched by the HTML panel's CodeMirror keymap (`onSubmit`), not by a
+  // global handler — registered here so the label comes from this single
+  // source and the help screen lists it.
+  {
+    commandId: 'godMode.applyHtml',
+    displayName: 'Apply HTML panel edits',
+    shortcut: { mac: '\u2318\u21a9', win: 'Ctrl+Enter' },
+    ariaKeyshortcuts: isPlatformMac() ? 'Meta+Enter' : 'Control+Enter',
+    match: (e) => (e.metaKey || e.ctrlKey) && !e.shiftKey && !e.altKey && e.key === 'Enter',
+    scope: 'editor',
+    capability: 'site.structure.edit',
+  },
+
   // ── Canvas + Layers tree (layer operations) ─────────────────────────────────
 
   {
