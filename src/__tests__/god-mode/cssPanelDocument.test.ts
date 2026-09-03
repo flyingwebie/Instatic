@@ -2,7 +2,7 @@
  * deriveCssPanelDocument — which CSS the God Mode CSS panel shows for the
  * current selection (or the whole page), and how each block is annotated.
  */
-import { beforeEach, describe, expect, it } from 'bun:test'
+import { afterEach, beforeEach, describe, expect, it } from 'bun:test'
 import { useEditorStore } from '@site/store/store'
 import { deriveCssPanelDocument } from '@site/code-dock/css/cssPanelDocument'
 import '@modules/base/index'
@@ -66,6 +66,14 @@ function setup() {
 }
 
 beforeEach(setup)
+// The rendered-canvas fixture lives in document.body, which Testing Library
+// also renders into: left behind, its "Title" heading turned a later suite's
+// getByText('Title') into "Found multiple elements". The store is the shared
+// singleton every suite reads, so the site goes too.
+afterEach(() => {
+  document.body.innerHTML = ''
+  state().clearSite()
+})
 
 describe('deriveCssPanelDocument', () => {
   it('scopes to the selected element: its classes, matching ambient rules, inline styles, framework utilities last', () => {
