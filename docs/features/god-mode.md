@@ -126,12 +126,17 @@ projection of the current selection, applied back to the tree as you type.
   `HTML_PANEL_APPLY_DELAY_MS`, one flush = one tree-undo step) that parses
   runs `importProjectionHtml` against the projected tree and, when the
   result is harmless, `applyProjectionImport` (site slice,
-  `site/projectionApplyActions.ts`) at once, which replaces the projected
-  subtree with the result's nodes in ONE `mutateActiveTreeAndSite` recipe:
-  matched uids keep their ids and metadata, new tags become nodes, vanished
-  uids are deleted and pruned from the canvas selection, class names link to
-  registry classes exactly as the lossy import does; canvas and layer panel
-  repaint from the store. The buffer is then brought up to the fresh
+  `site/projectionApplyActions.ts`) at once, which writes the import's diff
+  and nothing else in ONE `mutateActiveTreeAndSite` recipe: patched uids are
+  replaced under their ids with metadata kept, new tags become nodes,
+  vanished uids are deleted and pruned from the canvas selection, every
+  other node of the subtree stays the same object, and parents are re-linked
+  around the written nodes only; class names link to registry classes
+  exactly as the lossy import does; canvas and layer panel repaint from the
+  store. The scope matters: each reassigned node is a whole-node rewrite in
+  the collab doc that the undo manager pins against garbage collection, so
+  rewriting the subtree per keystroke retained the whole tree per apply on
+  a large page until the renderer ran out of memory. The buffer is then brought up to the fresh
   projection **in place** (`CodeMirrorEditor`'s `syncValue`: the minimal
   line edits from `code-editor/documentDiff.ts`, so the caret, history and
   folds survive) — a typed `<p>` gains its `uid`, and the text settles into
