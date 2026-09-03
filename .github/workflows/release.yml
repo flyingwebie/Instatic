@@ -52,6 +52,9 @@ jobs:
           VERSION="${GITHUB_REF_NAME#v}"
           echo "version=${VERSION}" >> "$GITHUB_OUTPUT"
           echo "created=$(date -u +%Y-%m-%dT%H:%M:%SZ)" >> "$GITHUB_OUTPUT"
+          # GHCR namespaces are lowercase. Publish under the repository owner
+          # so a fork's release lands in the fork's registry, not upstream's.
+          echo "owner=${GITHUB_REPOSITORY_OWNER,,}" >> "$GITHUB_OUTPUT"
 
       - name: Set up Docker Buildx
         uses: docker/setup-buildx-action@v3
@@ -67,7 +70,7 @@ jobs:
         id: meta
         uses: docker/metadata-action@v5
         with:
-          images: ghcr.io/corebunch/instatic
+          images: ghcr.io/${{ steps.version.outputs.owner }}/instatic
           tags: |
             type=semver,pattern={{version}}
             type=semver,pattern={{major}}.{{minor}}
