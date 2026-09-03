@@ -299,7 +299,7 @@ type SitePackageJson = {
 }
 ```
 
-The CMS supports plugins that ship their own npm deps and runtime imports (e.g. `three`). When a site declares a dependency, `bun install` runs against a per-site workspace under `uploads/sites/<siteId>/runtime/`, producing a hashed cache directory the server serves at `/_instatic/runtime/cache/<hash>/...`. The runtime cache layout is owned by `src/core/site-runtime/` and served by `server/publish/runtime/`.
+The CMS supports plugins that ship their own npm deps and runtime imports (e.g. `three`). When a site declares a dependency, `bun install` runs against a workspace keyed by the hash of its exact locked versions, under the runtime cache root (`RUNTIME_CACHE_DIR`; default `instatic-runtime-cache` in the OS temp dir — never under `UPLOADS_DIR`, which is served publicly), and the server serves the installed packages at `/_instatic/runtime/cache/<hash>/...`. A workspace counts as installed only when its completion sentinel exists **and** every locked package's `package.json` is still on disk: temp cleaners delete package files by age (Bun keeps the original mtimes of packages it clones from its global cache) while leaving directories and the sentinel behind, and trusting the sentinel alone made publish validation fail with a bare `Could not resolve "<package>"` for a declared dependency. A reaped workspace is removed and reinstalled on demand (`server/publish/runtime/dependencyCache.ts`, gated by `src/__tests__/server/runtimeDependencies.test.ts`). The cache layout is owned by `server/publish/runtime/`.
 
 The Site → Dependencies panel edits this `package.json`. Saving triggers a `bun install` and updates the runtime lock.
 
