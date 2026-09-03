@@ -523,7 +523,14 @@ untouched), and their Mutative patches translate into targeted Y operations
 children via array diffs, roster membership via pre/post id-set diffs;
 anything unattributable repopulates the doc (the conservative escape hatch).
 Remote/undo/reconcile changes flow the OTHER way: a per-doc projection
-replaces the affected row or shell in the store.
+replaces the affected row or shell in the store (the shell → site assembly is
+`collabSiteAssembly.ts`, next to the binding). A row doc's first sync
+projects that row in place; the site is re-assembled from the shell only
+for its own sync and for a row the store does not hold yet (a peer created
+it, so the roster projection bound its doc on demand). Re-assembling once
+per row doc ran the full shell projection and its store fan-out per page
+on load — enough blocked main thread and garbage on a large site to crash
+the renderer (gated by `src/__tests__/collab/connectProjectionScope.test.ts`).
 
 One surface needs more than the projection: the inline text editor is a
 contentEditable React does not own, and every keystroke commits the element's
