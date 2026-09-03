@@ -140,7 +140,7 @@ The templates track `ghcr.io/corebunch/instatic:latest`. Redeploy in Coolify to 
 Pin a version for predictable upgrades by setting `INSTATIC_IMAGE` in the Coolify UI:
 
 ```txt
-INSTATIC_IMAGE=ghcr.io/corebunch/instatic:0.0.16
+INSTATIC_IMAGE=ghcr.io/corebunch/instatic:0.0.19
 ```
 
 ## ARM64 Hosts
