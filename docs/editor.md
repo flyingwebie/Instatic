@@ -593,7 +593,7 @@ The sidebar shell expands/collapses by animating `--*-panel-width`. The panel sl
 
 `src/admin/pages/site/toolbar/`:
 
-- `PublishButton`, `PublishActionGroup` — publish current site / page
+- `PublishButton`, `PublishActionGroup` — publish current site / page. The status chip beside Publish (draft synced, connecting, checking code, N code errors) is a passive `role="status"` label except when code errors name a file: then it is a button that opens the first error's file in the Code Editor, whose Problems list shows every error with its `file:line:column` (gated by `src/__tests__/toolbar/publishStatusAction.test.tsx`).
 - `SettingsButton` — opens the Settings modal (see below)
 - `ZoomControls` — canvas zoom
 - `ModulePickerDropdown` — opens the module inserter modal
