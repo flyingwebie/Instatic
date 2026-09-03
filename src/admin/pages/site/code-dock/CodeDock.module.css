@@ -40,9 +40,9 @@
 .panelToggles {
   display: flex;
   align-items: center;
-  gap: 1px;
-  padding: 1px;
-  border-radius: var(--editor-radius);
+  gap: var(--space-px);
+  padding: var(--space-px);
+  border-radius: var(--radius);
   background: var(--overlay-10);
 }
 
