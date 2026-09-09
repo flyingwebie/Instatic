@@ -81,13 +81,16 @@ retain their existing review safeguards.
   be dragged out of existence: `MIN_COLUMN_WIDTH` (280px) is the drag floor,
   the group's CSS `min-width` (`--code-dock-column-min`), and the tab-fallback
   threshold; stored weights are floored (`CODE_DOCK_MIN_COLUMN_WEIGHT`, also
-  at restore) and a column shown again returns at an equal share. The top
-  edge drags to resize the dock height (clamped
+  at restore) and a column shown again returns at an equal share. A centered
+  pill grip in the top resize strip drags to resize the dock height (clamped
   `CODE_DOCK_MIN_HEIGHT`–`CODE_DOCK_MAX_HEIGHT`). Both resize gestures write CSS
   custom properties imperatively during the drag and commit to the store once on
   pointer-up, so the layout-persistence subscriber writes localStorage once per
   gesture. Keyboard: the handles are focusable `role="separator"` elements;
   arrow keys resize in discrete steps.
+- **Theme** — editor surfaces and gutters match the workspace background.
+  Token-based borders frame the dock and separate its columns and toolbars;
+  the grip highlights on hover, keyboard focus, and drag.
 - **Compact headers** — each panel has one row for its title, live status,
   Format icon, and expand icon. Normal edits apply as you type; no permanent
   Apply button is shown.

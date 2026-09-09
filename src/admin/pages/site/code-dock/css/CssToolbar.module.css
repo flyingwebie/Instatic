@@ -1,8 +1,8 @@
 .root {
   flex: none;
   min-width: 0;
-  border-bottom: 1px solid var(--border-subtle);
-  background: var(--bg-surface-2);
+  border-bottom: 1px solid var(--border-muted);
+  background: var(--bg-body);
 }
 
 .toolbarRow {

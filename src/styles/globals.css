@@ -427,6 +427,17 @@
     --success-text-muted: #065f46;
     --info-text: #4338ca;
 
+    /* Syntax foregrounds retain their roles with contrast on light surfaces. */
+    --syntax-keyword: var(--danger-text);
+    --syntax-entity: var(--accent-2);
+    --syntax-property: var(--accent-1);
+    --syntax-variable: var(--accent-4);
+    --syntax-string: var(--accent-3);
+    --syntax-constant: var(--accent-8);
+    --syntax-comment: var(--text-muted);
+    --syntax-operator: var(--text);
+    --syntax-invalid: var(--danger-text);
+
     /* Shadows and focus */
     --shadow-panel-inset-bottom: inset 0 -1px 0 var(--overlay-10);
     --shadow-panel-drop: 0 16px 42px rgba(15, 23, 42, 0.18);

@@ -7,25 +7,42 @@
   flex-direction: column;
   height: var(--code-dock-height);
   min-height: 0;
-  background: var(--bg-surface);
-  border-top: 1px solid var(--border-muted);
+  background: var(--bg-body);
+  border: 1px solid var(--border);
 }
 
 .heightHandle {
-  position: absolute;
-  top: -3px;
-  left: 0;
-  right: 0;
-  height: 6px;
+  position: relative;
+  flex: none;
+  height: 18px;
   cursor: row-resize;
   z-index: 1;
   touch-action: none;
 }
 
+.heightHandle::after {
+  content: '';
+  position: absolute;
+  top: 50%;
+  left: 50%;
+  width: 48px;
+  height: 4px;
+  transform: translate(-50%, -50%);
+  border-radius: var(--radius);
+  background: var(--text-muted);
+}
+
 .heightHandle:hover,
-.heightHandle:focus-visible {
-  background: var(--overlay-10);
+.heightHandle:focus-visible,
+.heightHandle[data-dragging='true'] {
+  background: var(--overlay-5);
   outline: none;
+}
+
+.heightHandle:hover::after,
+.heightHandle:focus-visible::after,
+.heightHandle[data-dragging='true']::after {
+  background: var(--text-bright);
 }
 
 .header {
@@ -34,7 +51,7 @@
   justify-content: space-between;
   gap: var(--space-s);
   padding: var(--space-2xs) var(--space-s);
-  border-bottom: 1px solid var(--border-subtle);
+  border-bottom: 1px solid var(--border);
 }
 
 .panelToggles {
@@ -114,7 +131,7 @@
   bottom: 0;
   left: 3px;
   width: 1px;
-  background: var(--border-subtle);
+  background: var(--border);
 }
 
 .columnDivider:hover::after,

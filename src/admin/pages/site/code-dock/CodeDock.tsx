@@ -30,6 +30,8 @@ import {
 import { selectCodeDockLoopNode, useEditorStore } from '@site/store/store'
 import {
   clampCodeDockHeight,
+  CODE_DOCK_MIN_HEIGHT,
+  CODE_DOCK_MAX_HEIGHT,
   CODE_DOCK_PANEL_IDS,
   type CodeDockColumnWeights,
   type CodeDockPanelId,
@@ -81,7 +83,9 @@ function trackPointerDrag(
   onEnd: (commit: boolean) => void,
 ): void {
   handle.setPointerCapture(pointerId)
+  handle.dataset.dragging = 'true'
   const finish = (commit: boolean) => {
+    delete handle.dataset.dragging
     handle.removeEventListener('pointermove', onMove)
     handle.removeEventListener('pointerup', onUp)
     handle.removeEventListener('pointercancel', onCancel)
@@ -269,6 +273,8 @@ export function CodeDock({ runtimeValidation }: CodeDockProps) {
         aria-orientation="horizontal"
         aria-label="Resize Code Dock"
         aria-valuenow={height}
+        aria-valuemin={CODE_DOCK_MIN_HEIGHT}
+        aria-valuemax={CODE_DOCK_MAX_HEIGHT}
         tabIndex={0}
         onPointerDown={onHeightPointerDown}
         onKeyDown={onHeightKeyDown}
