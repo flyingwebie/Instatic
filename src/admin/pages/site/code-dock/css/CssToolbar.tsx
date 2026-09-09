@@ -1,42 +1,20 @@
-import { useId, useRef, useState, type ComponentType, type KeyboardEvent } from 'react'
-import { TextStartTIcon } from 'pixel-art-icons/icons/text-start-t'
-import { TextAlignCenterIcon } from 'pixel-art-icons/icons/text-align-center'
-import { ColorsSwatchSolidIcon } from 'pixel-art-icons/icons/colors-swatch-solid'
-import { PaintBucketSolidIcon } from 'pixel-art-icons/icons/paint-bucket-solid'
-import { RulerDimensionSolidIcon } from 'pixel-art-icons/icons/ruler-dimension-solid'
-import { ArrowsScaleIcon } from 'pixel-art-icons/icons/arrows-scale'
-import { LayoutSolidIcon } from 'pixel-art-icons/icons/layout-solid'
-import { MoveIcon } from 'pixel-art-icons/icons/move'
-import { CodeIcon } from 'pixel-art-icons/icons/code'
-import { BulletlistSolidIcon } from 'pixel-art-icons/icons/bulletlist-solid'
-import { BoldIcon } from 'pixel-art-icons/icons/bold'
-import { ItalicIcon } from 'pixel-art-icons/icons/italic'
-import { UnderlineIcon } from 'pixel-art-icons/icons/underline'
-import { StrikeIcon } from 'pixel-art-icons/icons/strike'
+import { useLayoutEffect, useRef, useState, type KeyboardEvent } from 'react'
 import { Button } from '@ui/components/Button'
-import { Input } from '@ui/components/Input'
-import { ColorInput } from '@ui/components/ColorInput'
-import {
-  ContextMenu,
-  ContextMenuItem,
-  ContextMenuSeparator,
-  MenuSearchHeader,
-} from '@ui/components/ContextMenu'
+import { ContextMenu, ContextMenuItem, MenuSearchHeader } from '@ui/components/ContextMenu'
 import { Separator } from '@ui/components/Separator'
 import type { CssToolbarCommand, CssToolbarContext } from '@site/code-editor/cssToolbarTypes'
-import { CSS_TOOLS, CSS_CONDITIONS, type CssTool, type CssPreset } from './cssToolbarCatalog'
+import {
+  CSS_TOOLS,
+  CSS_CONDITIONS,
+  CSS_GRID_PRESETS,
+  CSS_GRID_CONTROLS,
+  type CssTool,
+  type CssPreset,
+  type CssPropertyControl,
+} from './cssToolbarCatalog'
+import { CSS_TOOLBAR_ICONS } from './cssToolbarIcons'
+import { CssPropertyEditor } from './CssPropertyEditor'
 import styles from './CssToolbar.module.css'
-
-const ICONS: Record<string, ComponentType<{ size?: number }>> = {
-  type: TextStartTIcon,
-  alignment: TextAlignCenterIcon,
-  color: ColorsSwatchSolidIcon,
-  effects: PaintBucketSolidIcon,
-  spacing: RulerDimensionSolidIcon,
-  size: ArrowsScaleIcon,
-  layout: LayoutSolidIcon,
-  position: MoveIcon,
-}
 
 function menuKeys(event: KeyboardEvent<HTMLDivElement>) {
   if (!['ArrowDown', 'ArrowUp', 'Home', 'End'].includes(event.key)) return
@@ -56,173 +34,24 @@ function menuKeys(event: KeyboardEvent<HTMLDivElement>) {
   items[next]?.focus()
 }
 
-function PropertyForm({
-  tool,
+function RuleNavigator({
   context,
   run,
+  onOpen,
 }: {
-  tool: CssTool
   context: CssToolbarContext
   run: (command: CssToolbarCommand) => void
-}) {
-  const [property, setProperty] = useState(tool.property)
-  const [value, setValue] = useState(context.declarations[tool.property] ?? '')
-  const [error, setError] = useState('')
-  const id = useId()
-  const submit = () => {
-    const name = property.trim()
-    const next = value.trim()
-    if (!/^--[\w-]+$|^-?[a-z][a-z-]*$/.test(name) || !next) {
-      setError('Enter a CSS property and value.')
-      return
-    }
-    if (typeof CSS !== 'undefined' && !CSS.supports(name, next.replace(/\s*!important\s*$/, ''))) {
-      setError('This property or value is not supported by your browser.')
-      return
-    }
-    run({ kind: 'declarations', declarations: { [name]: next } })
-  }
-  return (
-    <form
-      className={styles.form}
-      onSubmit={(event) => {
-        event.preventDefault()
-        submit()
-      }}
-    >
-      <label htmlFor={`${id}-property`}>Property</label>
-      <Input
-        id={`${id}-property`}
-        fieldSize="sm"
-        monospace
-        value={property}
-        onChange={(event) => {
-          setProperty(event.target.value)
-          setError('')
-        }}
-      />
-      <label htmlFor={`${id}-value`}>Value</label>
-      <div className={styles.valueRow}>
-        {tool.id === 'color' && (
-          <ColorInput
-            aria-label="Choose color"
-            value={value}
-            swatchValue={value}
-            onChange={(event) => {
-              setValue(event.target.value)
-              setError('')
-            }}
-          />
-        )}
-        <Input
-          id={`${id}-value`}
-          fieldSize="sm"
-          monospace
-          placeholder="CSS value or var(--token)"
-          value={value}
-          onChange={(event) => {
-            setValue(event.target.value)
-            setError('')
-          }}
-        />
-      </div>
-      {error && (
-        <span className={styles.error} role="alert">
-          {error}
-        </span>
-      )}
-      <Button type="submit" variant="secondary" size="sm">
-        Apply property
-      </Button>
-    </form>
-  )
-}
-
-function ToolMenu({
-  tool,
-  context,
-  run,
-}: {
-  tool: CssTool
-  context: CssToolbarContext
-  run: (command: CssToolbarCommand) => void
+  onOpen: () => void
 }) {
   const [open, setOpen] = useState(false)
-  const anchorRef = useRef<HTMLButtonElement>(null)
-  const Icon = ICONS[tool.id]
-  const close = () => {
-    setOpen(false)
-    anchorRef.current?.focus()
-  }
-  const apply = (command: CssToolbarCommand) => {
-    setOpen(false)
-    run(command)
-  }
-  return (
-    <>
-      <Button
-        ref={anchorRef}
-        variant="ghost"
-        size="xs"
-        iconOnly
-        aria-label={tool.label}
-        tooltip={tool.label}
-        aria-haspopup="dialog"
-        aria-expanded={open}
-        disabled={!context.canEdit}
-        onClick={() => setOpen(!open)}
-      >
-        <Icon size={16} />
-      </Button>
-      {open && (
-        <ContextMenu
-          anchorRef={anchorRef}
-          ariaLabel={tool.label}
-          role="dialog"
-          onClose={close}
-          width={280}
-          maxHeight={440}
-          onKeyDown={menuKeys}
-        >
-          <div className={styles.heading}>{tool.label}</div>
-          <div role="menu" aria-label={`${tool.label} presets`}>
-            {tool.presets.map((preset, index) => (
-              <ContextMenuItem
-                key={preset.label}
-                autoFocus={index === 0}
-                onClick={() => apply(preset.command)}
-              >
-                {preset.label}
-              </ContextMenuItem>
-            ))}
-          </div>
-          <ContextMenuSeparator />
-          <PropertyForm tool={tool} context={context} run={apply} />
-        </ContextMenu>
-      )}
-    </>
-  )
-}
-
-function RuleMenu({
-  context,
-  run,
-  conditions,
-}: {
-  context: CssToolbarContext
-  run: (command: CssToolbarCommand) => void
-  conditions: CssPreset[]
-}) {
-  const [open, setOpen] = useState<'rules' | 'conditions' | null>(null)
   const [query, setQuery] = useState('')
   const rulesRef = useRef<HTMLButtonElement>(null)
-  const conditionsRef = useRef<HTMLButtonElement>(null)
   const close = () => {
-    ;(open === 'rules' ? rulesRef : conditionsRef).current?.focus()
-    setOpen(null)
+    rulesRef.current?.focus()
+    setOpen(false)
   }
   const apply = (command: CssToolbarCommand) => {
-    setOpen(null)
+    setOpen(false)
     run(command)
   }
   const rules = context.rules.filter((rule) =>
@@ -231,24 +60,6 @@ function RuleMenu({
   return (
     <>
       <Button
-        ref={conditionsRef}
-        variant="ghost"
-        size="xs"
-        iconOnly
-        aria-label="Conditional rules"
-        tooltip={
-          context.canWrap
-            ? 'Wrap the current rule in a condition'
-            : 'Choose an editable class or selector rule to add a condition'
-        }
-        aria-haspopup="menu"
-        aria-expanded={open === 'conditions'}
-        disabled={!context.canWrap}
-        onClick={() => setOpen(open === 'conditions' ? null : 'conditions')}
-      >
-        <CodeIcon size={16} />
-      </Button>
-      <Button
         ref={rulesRef}
         variant="ghost"
         size="xs"
@@ -256,36 +67,16 @@ function RuleMenu({
         aria-label="Navigate CSS rules"
         tooltip="Navigate CSS rules"
         aria-haspopup="menu"
-        aria-expanded={open === 'rules'}
+        aria-expanded={open}
         onClick={() => {
+          onOpen()
           setQuery('')
-          setOpen(open === 'rules' ? null : 'rules')
+          setOpen(!open)
         }}
       >
-        <BulletlistSolidIcon size={16} />
+        <CSS_TOOLBAR_ICONS.rows size={16} />
       </Button>
-      {open === 'conditions' && (
-        <ContextMenu
-          anchorRef={conditionsRef}
-          ariaLabel="Conditional rules"
-          onClose={close}
-          width={290}
-          maxHeight={380}
-          onKeyDown={menuKeys}
-        >
-          <div className={styles.heading}>Wrap current rule</div>
-          {[...conditions, ...CSS_CONDITIONS].map((preset, index) => (
-            <ContextMenuItem
-              key={preset.label}
-              autoFocus={index === 0}
-              onClick={() => apply(preset.command)}
-            >
-              {preset.label}
-            </ContextMenuItem>
-          ))}
-        </ContextMenu>
-      )}
-      {open === 'rules' && (
+      {open && (
         <ContextMenu
           anchorRef={rulesRef}
           ariaLabel="CSS rules"
@@ -342,6 +133,33 @@ export function CssToolbar({
   run: (command: CssToolbarCommand) => void
   conditions: CssPreset[]
 }) {
+  const [category, setCategory] = useState<CssTool['id'] | 'conditions' | null>(null)
+  const [editing, setEditing] = useState<CssPropertyControl | null>(null)
+  const anchorRef = useRef<HTMLButtonElement>(null)
+  const categoriesRef = useRef<HTMLDivElement>(null)
+  const popupRef = useRef<HTMLDivElement>(null)
+  const restoreFocusRef = useRef<CssTool['id'] | 'conditions' | null>(null)
+  // Expanded buttons change their tooltip wrapper; restore focus after that DOM update.
+  useLayoutEffect(() => {
+    if (category !== null) {
+      // Wait until ContextMenu has measured and made the popup visible.
+      const frame = requestAnimationFrame(() => {
+        const target =
+          popupRef.current?.querySelector<HTMLButtonElement>('button:not(:disabled)') ??
+          popupRef.current
+        target?.focus()
+      })
+      return () => cancelAnimationFrame(frame)
+    }
+    if (!restoreFocusRef.current) return
+    categoriesRef.current
+      ?.querySelector<HTMLButtonElement>(`[data-css-category="${restoreFocusRef.current}"]`)
+      ?.focus()
+    restoreFocusRef.current = null
+  }, [category])
+  const tool = CSS_TOOLS.find((item) => item.id === category)
+  const isGrid = /^(?:inline-)?grid(?:\s*!important)?$/.test(context.declarations.display ?? '')
+  const presets = tool?.presets ?? [...conditions, ...CSS_CONDITIONS]
   const decoration = (
     context.declarations['text-decoration-line'] ??
     context.declarations['text-decoration'] ??
@@ -350,7 +168,7 @@ export function CssToolbar({
   const toggles = [
     {
       label: 'Bold',
-      Icon: BoldIcon,
+      Icon: CSS_TOOLBAR_ICONS.bold,
       property: 'font-weight',
       value: '700',
       off: '400',
@@ -358,15 +176,15 @@ export function CssToolbar({
     },
     {
       label: 'Italic',
-      Icon: ItalicIcon,
+      Icon: CSS_TOOLBAR_ICONS.italic,
       property: 'font-style',
       value: 'italic',
       off: 'normal',
       active: context.declarations['font-style']?.startsWith('italic'),
     },
     ...[
-      { label: 'Underline', Icon: UnderlineIcon, token: 'underline' },
-      { label: 'Strikethrough', Icon: StrikeIcon, token: 'line-through' },
+      { label: 'Underline', Icon: CSS_TOOLBAR_ICONS.underline, token: 'underline' },
+      { label: 'Strikethrough', Icon: CSS_TOOLBAR_ICONS.strike, token: 'line-through' },
     ].map(({ label, Icon, token }) => {
       const tokens = decoration
         .split(/\s+/)
@@ -382,50 +200,198 @@ export function CssToolbar({
       }
     }),
   ]
+
+  const renderPreset = (preset: CssPreset) => {
+    const Icon = CSS_TOOLBAR_ICONS[preset.icon]
+    const command = preset.command
+    const active =
+      command.kind === 'declarations' &&
+      Object.entries(command.declarations).every(
+        ([property, value]) =>
+          context.declarations[property]?.replace(/\s*!important\s*$/, '') === value,
+      )
+    return (
+      <Button
+        key={preset.label}
+        variant="ghost"
+        size="xs"
+        iconOnly
+        aria-label={preset.label}
+        tooltip={preset.label}
+        pressed={active}
+        disabled={command.kind === 'wrap' ? !context.canWrap : !context.canEdit}
+        onClick={(event) => {
+          setEditing(null)
+          run(command)
+          event.currentTarget.focus()
+        }}
+      >
+        <span className={styles.presetIcon}>
+          <Icon size={16} />
+          {preset.badge !== undefined && (
+            <span className={styles.badge} aria-hidden="true">
+              {preset.badge}
+            </span>
+          )}
+        </span>
+      </Button>
+    )
+  }
+  const propertyControl = (control: CssPropertyControl) => {
+    const Icon = CSS_TOOLBAR_ICONS[control.icon]
+    return (
+      <Button
+        key={control.property}
+        variant="ghost"
+        size="xs"
+        iconOnly
+        aria-label={control.label}
+        tooltip={control.label}
+        pressed={editing?.property === control.property}
+        disabled={!context.canEdit}
+        onClick={() => setEditing(control)}
+      >
+        <Icon size={16} />
+      </Button>
+    )
+  }
+  const selectCategory = (next: CssTool['id'] | 'conditions') => {
+    if (category === next) restoreFocusRef.current = next
+    setCategory(category === next ? null : next)
+    setEditing(null)
+  }
   return (
     <div className={styles.root} data-testid="css-toolbar">
-      <div className={styles.controls} role="group" aria-label="CSS tools">
-        <div className={styles.group} role="group" aria-label="Text tools">
-          {CSS_TOOLS.slice(0, 2).map((tool) => (
-            <ToolMenu key={tool.id} tool={tool} context={context} run={run} />
-          ))}
-          {toggles.map(({ label, Icon, property, value, off, active }) => (
+      <div ref={categoriesRef} className={styles.controls} role="group" aria-label="CSS categories">
+        {CSS_TOOLS.map((item) => {
+          const Icon = CSS_TOOLBAR_ICONS[item.id]
+          return (
             <Button
-              key={label}
+              key={item.id}
+              ref={category === item.id ? anchorRef : undefined}
+              data-css-category={item.id}
               variant="ghost"
               size="xs"
               iconOnly
-              aria-label={label}
-              tooltip={label}
-              pressed={!!active}
-              disabled={!context.canEdit}
-              onClick={() =>
-                run({ kind: 'declarations', declarations: { [property]: active ? off : value } })
-              }
+              aria-label={item.label}
+              tooltip={item.label}
+              aria-haspopup="dialog"
+              aria-expanded={category === item.id}
+              pressed={category === item.id}
+              onClick={() => selectCategory(item.id)}
             >
               <Icon size={16} />
             </Button>
-          ))}
-        </div>
+          )
+        })}
+        <Button
+          variant="ghost"
+          size="xs"
+          iconOnly
+          ref={category === 'conditions' ? anchorRef : undefined}
+          data-css-category="conditions"
+          aria-label="Conditional rules"
+          tooltip="Conditional rules"
+          aria-haspopup="dialog"
+          aria-expanded={category === 'conditions'}
+          pressed={category === 'conditions'}
+          onClick={() => selectCategory('conditions')}
+        >
+          <CSS_TOOLBAR_ICONS.code size={16} />
+        </Button>
         <Separator orientation="vertical" spacing="compact" />
-        <div className={styles.group} role="group" aria-label="Appearance and box tools">
-          {CSS_TOOLS.slice(2, 6).map((tool) => (
-            <ToolMenu key={tool.id} tool={tool} context={context} run={run} />
-          ))}
-        </div>
-        <Separator orientation="vertical" spacing="compact" />
-        <div className={styles.group} role="group" aria-label="Layout and rule tools">
-          {CSS_TOOLS.slice(6).map((tool) => (
-            <ToolMenu key={tool.id} tool={tool} context={context} run={run} />
-          ))}
-          <RuleMenu context={context} run={run} conditions={conditions} />
-        </div>
+        <RuleNavigator
+          context={context}
+          run={run}
+          onOpen={() => {
+            setCategory(null)
+            setEditing(null)
+          }}
+        />
       </div>
-      <div className={styles.target} title={context.activeRule ?? undefined}>
-        {context.activeRule
-          ? `Target: ${context.activeRule}${context.canEdit ? '' : ' · read-only or invalid CSS'}`
-          : 'Choose a rule in the code or rule navigator'}
-      </div>
+      {category && (
+        <ContextMenu
+          key={category}
+          anchorRef={anchorRef}
+          triggerRef={categoriesRef}
+          ref={popupRef}
+          tabIndex={-1}
+          ariaLabel={tool?.label ?? 'Conditional rules'}
+          role="dialog"
+          width={280}
+          maxHeight={440}
+          onClose={() => {
+            if (popupRef.current?.contains(document.activeElement))
+              restoreFocusRef.current = category
+            setCategory(null)
+            setEditing(null)
+          }}
+        >
+          <div
+            className={styles.settings}
+            role="group"
+            aria-label={`${tool?.label ?? 'Conditional rules'} settings`}
+            data-testid="css-toolbar-settings"
+          >
+            {category === 'type' &&
+              toggles.map(({ label, Icon, property, value, off, active }) => (
+                <Button
+                  key={label}
+                  variant="ghost"
+                  size="xs"
+                  iconOnly
+                  aria-label={label}
+                  tooltip={label}
+                  pressed={!!active}
+                  disabled={!context.canEdit}
+                  onClick={(event) => {
+                    run({
+                      kind: 'declarations',
+                      declarations: { [property]: active ? off : value },
+                    })
+                    event.currentTarget.focus()
+                  }}
+                >
+                  <Icon size={16} />
+                </Button>
+              ))}
+            {presets.map(renderPreset)}
+            {tool &&
+              propertyControl({
+                label: 'Custom CSS property',
+                custom: true,
+                property: tool.property,
+                icon: 'settings',
+                ...(tool.id === 'color' ? { kind: 'color' } : {}),
+              })}
+          </div>
+          {category === 'layout' && isGrid && (
+            <>
+              <Separator spacing="compact" />
+              <div role="group" aria-label="Grid settings">
+                <div className={styles.settings}>{CSS_GRID_PRESETS.map(renderPreset)}</div>
+                <div className={styles.settings}>{CSS_GRID_CONTROLS.map(propertyControl)}</div>
+              </div>
+            </>
+          )}
+          {editing && (
+            <>
+              <Separator spacing="compact" />
+              <CssPropertyEditor
+                key={editing.property}
+                control={editing}
+                context={context}
+                custom={!!editing.custom}
+                run={(command) => {
+                  run(command)
+                  setEditing(null)
+                  anchorRef.current?.focus()
+                }}
+              />
+            </>
+          )}
+        </ContextMenu>
+      )}
     </div>
   )
 }

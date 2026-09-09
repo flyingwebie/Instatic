@@ -257,16 +257,23 @@ rail; there is no silent forking. A new selector typed in the panel creates a
 real class or ambient rule; a new `.class` is **not** auto-assigned to the
 selection (assignment stays explicit — the HTML panel's `class` attribute).
 
-**CSS tools** — `css/CssToolbar.tsx` groups text controls, colors/effects,
-spacing/dimensions, layout/position, conditions, and rule navigation. Presets
-live in `css/cssToolbarCatalog.ts`; property menus also accept custom CSS
-property/value pairs and colors. Bold, italic, underline and strikethrough
-reflect the current block's authored declarations. The wrapping toolbar fits
-narrow dock columns as well as the expanded panel.
+**CSS tools** — `css/CssToolbar.tsx` opens compact category popups with
+icon-only preset and property controls. Accessible names, tooltips and
+pressed states identify each option. Changing categories does not edit the
+document. Choosing a preset keeps the popup open for successive edits;
+selector navigation remains searchable text so authored selectors are readable.
 
-Actions target the innermost CSS block at the cursor. The target selector is
-shown below the tools; the searchable navigator uses the current editor
-buffer, so offsets follow unapplied edits. `code-editor/cssToolbarCommands.ts`
+Presets live in `css/cssToolbarCatalog.ts`, with icons in
+`css/cssToolbarIcons.ts`. Selecting **Display grid** reveals Grid-1/2/3/4/6,
+a responsive grid preset, column/row count editors, and independent gap
+editors in the Layout popup. Column presets preserve existing row tracks and
+gaps. `css/CssPropertyEditor.tsx` edits track counts from 1 to 24 and custom
+CSS properties/values (including arbitrary track definitions). Property forms
+open inside the same popup. Typography includes bold, italic, underline and
+strikethrough toggles reflecting the current block's authored declarations.
+
+Actions target the innermost CSS block at the cursor. The searchable navigator
+uses the current editor buffer, so offsets follow unapplied edits. `code-editor/cssToolbarCommands.ts`
 uses the CSS syntax tree to replace direct declarations without touching
 nested rules or neighbouring selectors, and dispatches through the ordinary
 editor change path (live apply, draft handling, collaboration and undo).

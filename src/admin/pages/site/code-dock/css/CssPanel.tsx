@@ -131,6 +131,7 @@ export function CssPanel() {
 
   const conditions: CssPreset[] = inputs.site.breakpoints.filter((bp) => bp.mediaQuery).map((bp) => ({
     label: bp.label,
+    icon: 'monitor',
     command: { kind: 'wrap', condition: `@media ${bp.mediaQuery}` },
   }))
 
