@@ -28,10 +28,10 @@
  * @see Constraint #402 — no inline styles
  */
 
-import { syncProjectionFormatting } from './syncProjectionFormatting'
+import { syncEditorValue, valueSync, type ValueSyncMode } from './editorValueSync'
 import { useRef, useEffect, useEffectEvent, useCallback, useImperativeHandle, type Ref } from 'react'
 import { EditorView, basicSetup } from 'codemirror'
-import { Annotation, EditorState, Prec } from '@codemirror/state'
+import { EditorState, Prec } from '@codemirror/state'
 import {
   acceptCompletion,
   autocompletion,
@@ -65,7 +65,6 @@ import { uidInspector } from './uidInspector'
 import { cssVarShorthand } from './cssVarShorthand'
 import { cssToolbarContext, runCssToolbarCommand } from './cssToolbarCommands'
 import type { CssToolbarCommand, CssToolbarContext, CssToolbarResult } from './cssToolbarTypes'
-import { documentChanges } from './documentDiff'
 import { formatDocument, isFormattableLanguage, type FormatResult } from './formatDocument'
 import type { EditorCompletionCatalog } from './completionCatalog'
 
@@ -191,7 +190,7 @@ interface CodeMirrorEditorProps {
    * `html-projection` retains source formatting while syncing HTML values.
    * Such patches never re-enter `onChange`.
    */
-  syncValue?: boolean | 'html-projection'
+  syncValue?: ValueSyncMode
   /** Show the lint marker gutter column (diagnostics stay inline without it). */
   lintGutter?: boolean
   /** Formatting (Shift-Alt-F or `format()`) failed — e.g. the document does not parse. */
@@ -206,9 +205,6 @@ export interface CodeMirrorEditorHandle {
   format: () => Promise<FormatResult>
   runCssCommand: (command: CssToolbarCommand) => CssToolbarResult
 }
-
-/** Marks a transaction that brings the buffer up to date with `value` — not an author edit. */
-const valueSync = Annotation.define<boolean>()
 
 const rejectAllChanges = EditorState.changeFilter.of(() => false)
 const readOnlyExtensions = [EditorState.readOnly.of(true), EditorView.editable.of(false), rejectAllChanges]
@@ -675,12 +671,7 @@ export default function CodeMirrorEditor({
     if (!syncValue) return
     const view = viewRef.current
     if (!view || pendingChangeRef.current !== null) return
-    const current = view.state.doc.toString()
-    if (current === value) return
-    const next = syncValue === 'html-projection' ? syncProjectionFormatting(current, value) : value
-    if (current !== next) {
-      view.dispatch({ changes: documentChanges(current, next), annotations: [valueSync.of(true)] })
-    }
+    syncEditorValue(view, value, syncValue)
   }, [value, syncValue])
 
   useEffect(() => {

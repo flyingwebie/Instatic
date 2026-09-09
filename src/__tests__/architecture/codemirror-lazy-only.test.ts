@@ -96,6 +96,7 @@ const LAZY_CHUNK_HELPERS = [
   'cssToolbarCommands.ts',
   'documentDiff.ts',
   'syncProjectionFormatting.ts',
+  'editorValueSync.ts',
   'formatDocument.ts',
 ]
 const LAZY_CHUNK_MODULES = new Set([
