@@ -267,19 +267,6 @@ export function CodeDock({ runtimeValidation }: CodeDockProps) {
       data-testid="code-dock"
       data-tabbed={tabbed ? 'true' : 'false'}
     >
-      <div
-        className={styles.heightHandle}
-        role="separator"
-        aria-orientation="horizontal"
-        aria-label="Resize Code Dock"
-        aria-valuenow={height}
-        aria-valuemin={CODE_DOCK_MIN_HEIGHT}
-        aria-valuemax={CODE_DOCK_MAX_HEIGHT}
-        tabIndex={0}
-        onPointerDown={onHeightPointerDown}
-        onKeyDown={onHeightKeyDown}
-      />
-
       <header className={styles.header}>
         <div
           className={styles.panelToggles}
@@ -315,6 +302,18 @@ export function CodeDock({ runtimeValidation }: CodeDockProps) {
             )
           })}
         </div>
+        <div
+          className={styles.heightHandle}
+          role="separator"
+          aria-orientation="horizontal"
+          aria-label="Resize Code Dock"
+          aria-valuenow={height}
+          aria-valuemin={CODE_DOCK_MIN_HEIGHT}
+          aria-valuemax={CODE_DOCK_MAX_HEIGHT}
+          tabIndex={0}
+          onPointerDown={onHeightPointerDown}
+          onKeyDown={onHeightKeyDown}
+        />
         <div className={styles.headerActions} ref={orderTriggerRef}>
           <Button
             ref={orderRef}

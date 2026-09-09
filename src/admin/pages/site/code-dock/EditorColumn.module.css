@@ -9,6 +9,7 @@
 .editor {
   flex: 1;
   min-height: 0;
+  background: var(--bg-surface);
 }
 
 .editor [data-codemirror-container] {
@@ -18,12 +19,16 @@
 
 .editor :global(.cm-editor) {
   height: 100%;
-  background: var(--bg-body);
+  background: var(--bg-surface);
 }
 
 .editor :global(.cm-gutters) {
-  background: var(--bg-body);
+  background: var(--bg-surface-2);
   border-right: 1px solid var(--border-muted);
+}
+
+.editor :global(.cm-lineNumbers .cm-gutterElement) {
+  color: var(--text-subtle);
 }
 
 .editor :global(.cm-activeLine),
