@@ -10,6 +10,7 @@ import { CodeIcon } from 'pixel-art-icons/icons/code'
 import { useEditorStore } from '@site/store/store'
 import { useGodModeUnlocked } from '@site/hooks/useGodModeUnlocked'
 import { formatShortcut, getKeybindingForCommand } from '@admin/spotlight/keybindings'
+import { preloadCodeDock } from '@site/code-dock'
 import { Button } from '@ui/components/Button'
 
 export function GodModeToggleButton() {
@@ -30,6 +31,8 @@ export function GodModeToggleButton() {
       pressed={active}
       aria-label={active ? 'Exit God Mode' : 'Enter God Mode'}
       tooltip={(active ? 'Exit God Mode' : 'God Mode') + shortcut}
+      onMouseEnter={preloadCodeDock}
+      onFocus={preloadCodeDock}
       onClick={toggleGodMode}
       data-testid="toolbar-god-mode-btn"
     >

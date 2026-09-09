@@ -22,15 +22,6 @@
   padding-inline-end: var(--space-xs);
 }
 
-.orderItem {
-  cursor: grab;
-}
-
-.orderItem[data-drop-target='true'] {
-  outline: 1px solid var(--text);
-  background: var(--bg-surface);
-}
-
 .controls,
 .settings {
   display: flex;
@@ -51,16 +42,6 @@
 .settings {
   flex-wrap: wrap;
   overflow-x: visible;
-}
-
-.orderPalette {
-  display: grid;
-  grid-template-columns: repeat(5, minmax(0, 1fr));
-  gap: var(--space-xs);
-}
-
-.orderPalette > * {
-  justify-self: center;
 }
 
 .presetIcon {

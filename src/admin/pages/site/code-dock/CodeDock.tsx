@@ -18,10 +18,19 @@
  * is why the panels keep their unapplied drafts in the store
  * (`codeDockDrafts`) rather than in component state.
  */
-import { useEffect, useRef, useState, type CSSProperties } from 'react'
+import {
+  lazy,
+  Suspense,
+  useEffect,
+  useRef,
+  useState,
+  type CSSProperties,
+  type ReactNode,
+} from 'react'
 import { useEditorStore } from '@site/store/store'
 import {
   clampCodeDockHeight,
+  CODE_DOCK_PANEL_IDS,
   type CodeDockColumnWeights,
   type CodeDockPanelId,
 } from '@site/store/slices/codeDockSlice'
@@ -30,11 +39,20 @@ import { Dialog } from '@ui/components/Dialog'
 import { ArrowsScaleIcon } from 'pixel-art-icons/icons/arrows-scale'
 import { CheckIcon } from 'pixel-art-icons/icons/check'
 import { cn } from '@ui/cn'
-import { HtmlPanel } from './html'
-import { CssPanel } from './css'
-import { JsPanel } from './js'
+import { SlidersHorizontalIcon } from 'pixel-art-icons/icons/sliders-horizontal'
+import { DragAndDropSolidIcon } from 'pixel-art-icons/icons/drag-and-drop-solid'
+import { ContextMenu } from '@ui/components/ContextMenu'
+import { CodeEditorSkeleton } from '@site/code-editor'
+import { PanelHeader } from './PanelHeader'
+import { ControlOrderEditor } from './ControlOrderEditor'
+import { loadHtmlPanel, loadCssPanel, loadJsPanel, preloadCodeDock } from './loadCodeDock'
+
 import type { RuntimeScriptValidationState } from '@site/hooks/useRuntimeScriptDiagnostics'
 import styles from './CodeDock.module.css'
+
+const HtmlPanel = lazy(() => loadHtmlPanel().then((m) => ({ default: m.HtmlPanel })))
+const CssPanel = lazy(() => loadCssPanel().then((m) => ({ default: m.CssPanel })))
+const JsPanel = lazy(() => loadJsPanel().then((m) => ({ default: m.JsPanel })))
 
 const PANELS: ReadonlyArray<{ id: CodeDockPanelId; label: string }> = [
   { id: 'html', label: 'HTML' },
@@ -94,7 +112,30 @@ export function CodeDock({ runtimeValidation }: CodeDockProps) {
   const setPropertiesPanelMode = useEditorStore((s) => s.setPropertiesPanelMode)
   const setPropertiesPanel = useEditorStore((s) => s.setPropertiesPanel)
 
-  const visiblePanels = PANELS.filter((p) => panels[p.id])
+  const panelOrder = useEditorStore((s) => s.codeDockPanelOrder)
+  const setPanelOrder = useEditorStore((s) => s.setCodeDockPanelOrder)
+  const orderedPanels = panelOrder.map((id) => PANELS.find((panel) => panel.id === id)!)
+  const visiblePanels = orderedPanels.filter((p) => panels[p.id])
+  const [ordering, setOrdering] = useState(false)
+  const orderRef = useRef<HTMLButtonElement>(null)
+  const orderTriggerRef = useRef<HTMLDivElement>(null)
+  const orderPopupRef = useRef<HTMLDivElement>(null)
+
+  useEffect(() => {
+    preloadCodeDock()
+  }, [])
+  useEffect(() => {
+    if (!ordering) return
+    const frame = requestAnimationFrame(() =>
+      orderPopupRef.current?.querySelector<HTMLButtonElement>('button')?.focus(),
+    )
+    return () => cancelAnimationFrame(frame)
+  }, [ordering])
+
+  function closeOrder(restoreFocus = true) {
+    setOrdering(false)
+    if (restoreFocus) requestAnimationFrame(() => orderRef.current?.focus())
+  }
   const [expanded, setExpanded] = useState<CodeDockPanelId | null>(null)
 
   // Narrow-window fallback: when the visible columns can't all fit at their
@@ -238,7 +279,7 @@ export function CodeDock({ runtimeValidation }: CodeDockProps) {
           role={tabbed ? 'tablist' : 'group'}
           aria-label={tabbed ? 'Code panel' : 'Visible code panels'}
         >
-          {PANELS.map((panel) => {
+          {orderedPanels.map((panel) => {
             const on = tabbed ? activeTab === panel.id : panels[panel.id]
             return (
               <Button
@@ -267,16 +308,59 @@ export function CodeDock({ runtimeValidation }: CodeDockProps) {
             )
           })}
         </div>
-        <Button
-          variant="ghost"
-          size="xs"
-          tooltip="Open the Properties panel as a floating window"
-          onClick={openFloatingProperties}
-          data-testid="code-dock-open-properties"
-        >
-          Properties
-        </Button>
+        <div className={styles.headerActions} ref={orderTriggerRef}>
+          <Button
+            ref={orderRef}
+            variant="ghost"
+            size="xs"
+            iconOnly
+            aria-label="Reorder code panels"
+            tooltip="Reorder code panels"
+            aria-haspopup="dialog"
+            aria-expanded={ordering}
+            pressed={ordering}
+            onClick={() => (ordering ? closeOrder() : setOrdering(true))}
+          >
+            <DragAndDropSolidIcon size={14} />
+          </Button>
+          <Button
+            variant="ghost"
+            size="xs"
+            iconOnly
+            aria-label="Properties Panel"
+            tooltip="Properties Panel"
+            onClick={openFloatingProperties}
+            data-testid="code-dock-open-properties"
+          >
+            <SlidersHorizontalIcon size={14} />
+          </Button>
+        </div>
       </header>
+      {ordering && (
+        <ContextMenu
+          anchorRef={orderRef}
+          triggerRef={orderTriggerRef}
+          ref={orderPopupRef}
+          role="dialog"
+          ariaLabel="Reorder code panels"
+          width={230}
+          onClose={() => closeOrder(!!orderPopupRef.current?.contains(document.activeElement))}
+        >
+          <ControlOrderEditor
+            label="Panel order"
+            items={orderedPanels.map((panel) => ({
+              ...panel,
+              icon: (
+                <span className={styles.panelOrderIcon} aria-hidden="true">
+                  {panel.label}
+                </span>
+              ),
+            }))}
+            defaultOrder={CODE_DOCK_PANEL_IDS}
+            saveOrder={setPanelOrder}
+          />
+        </ContextMenu>
+      )}
 
       {tabbed ? (
         <div className={styles.columns}>
@@ -291,7 +375,10 @@ export function CodeDock({ runtimeValidation }: CodeDockProps) {
       ) : visiblePanels.length > 0 ? (
         <div className={styles.columns}>
           {visiblePanels.map((panel, index) => (
-            <div key={panel.id} className={cn(styles.columnGroup, styles[`columnGroup_${panel.id}`])}>
+            <div
+              key={panel.id}
+              className={cn(styles.columnGroup, styles[`columnGroup_${panel.id}`])}
+            >
               {index > 0 && (
                 <div
                   className={styles.columnDivider}
@@ -314,7 +401,9 @@ export function CodeDock({ runtimeValidation }: CodeDockProps) {
           ))}
         </div>
       ) : (
-        <div className={styles.allHidden}>All panels hidden — use the buttons above to show one.</div>
+        <div className={styles.allHidden}>
+          All panels hidden — use the buttons above to show one.
+        </div>
       )}
 
       {expanded ? (
@@ -326,17 +415,23 @@ export function CodeDock({ runtimeValidation }: CodeDockProps) {
           onClose={() => setExpanded(null)}
           ariaLabel="Expanded code panel"
         >
-          <CodeDockPanelBody id={expanded} runtimeValidation={runtimeValidation} />
+          <Suspense fallback={<CodeEditorSkeleton />}>
+            <CodeDockPanelBody id={expanded} runtimeValidation={runtimeValidation} />
+          </Suspense>
         </Dialog>
       ) : null}
     </section>
   )
 }
 
-function CodeDockPanelBody({ id, runtimeValidation }: CodeDockProps & { id: CodeDockPanelId }) {
-  if (id === 'html') return <HtmlPanel />
-  if (id === 'css') return <CssPanel />
-  return <JsPanel runtimeValidation={runtimeValidation} />
+function CodeDockPanelBody({
+  id,
+  runtimeValidation,
+  headerActions,
+}: CodeDockProps & { id: CodeDockPanelId; headerActions?: ReactNode }) {
+  if (id === 'html') return <HtmlPanel headerActions={headerActions} />
+  if (id === 'css') return <CssPanel headerActions={headerActions} />
+  return <JsPanel runtimeValidation={runtimeValidation} headerActions={headerActions} />
 }
 
 function CodeDockPanel({
@@ -345,31 +440,55 @@ function CodeDockPanel({
   runtimeValidation,
   expanded,
   onExpand,
-}: CodeDockProps & { id: CodeDockPanelId; label: string; expanded: boolean; onExpand: () => void }) {
+}: CodeDockProps & {
+  id: CodeDockPanelId
+  label: string
+  expanded: boolean
+  onExpand: () => void
+}) {
+  const expandButton = (
+    <Button
+      variant="ghost"
+      size="xs"
+      iconOnly
+      aria-label={`Expand the ${label} panel`}
+      tooltip={`Expand the ${label} panel`}
+      onClick={onExpand}
+      data-testid={`code-dock-expand-${id}`}
+    >
+      <ArrowsScaleIcon size={12} aria-hidden="true" />
+    </Button>
+  )
   return (
     <section
       className={styles.column}
       aria-label={`${label} panel`}
       data-testid={`code-dock-panel-${id}`}
     >
-      <div className={styles.columnTitle}>
-        {label}
-        <Button
-          variant="ghost"
-          size="xs"
-          iconOnly
-          aria-label={`Expand the ${label} panel`}
-          tooltip={`Expand the ${label} panel into a larger editor`}
-          onClick={onExpand}
-          data-testid={`code-dock-expand-${id}`}
-        >
-          <ArrowsScaleIcon size={12} aria-hidden="true" />
-        </Button>
-      </div>
       {expanded ? (
-        <div className={styles.expandedPlaceholder}>Editing in the expanded view</div>
+        <>
+          <PanelHeader label={label} actions={null}>
+            <span />
+          </PanelHeader>
+          <div className={styles.expandedPlaceholder}>Editing in the expanded view</div>
+        </>
       ) : (
-        <CodeDockPanelBody id={id} runtimeValidation={runtimeValidation} />
+        <Suspense
+          fallback={
+            <>
+              <PanelHeader label={label} actions={expandButton}>
+                <span role="status">Loading editor…</span>
+              </PanelHeader>
+              <CodeEditorSkeleton />
+            </>
+          }
+        >
+          <CodeDockPanelBody
+            id={id}
+            runtimeValidation={runtimeValidation}
+            headerActions={expandButton}
+          />
+        </Suspense>
       )}
     </section>
   )

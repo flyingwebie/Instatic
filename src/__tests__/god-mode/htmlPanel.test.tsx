@@ -16,7 +16,8 @@ import '@modules/base/index'
 
 const nextFrame = () => new Promise((resolve) => requestAnimationFrame(resolve))
 /** Let the live-apply debounce flush. */
-const afterDebounce = () => act(() => new Promise((resolve) => setTimeout(resolve, HTML_PANEL_APPLY_DELAY_MS + 80)))
+const afterDebounce = () =>
+  act(() => new Promise((resolve) => setTimeout(resolve, HTML_PANEL_APPLY_DELAY_MS + 80)))
 
 function state() {
   return useEditorStore.getState()
@@ -24,11 +25,20 @@ function state() {
 
 function setup() {
   state().clearSite()
-  useEditorStore.setState({ activePageId: null, activeDocument: null, selectedNodeId: null, selectedNodeIds: [] } as Parameters<typeof useEditorStore.setState>[0])
+  useEditorStore.setState({
+    activePageId: null,
+    activeDocument: null,
+    selectedNodeId: null,
+    selectedNodeIds: [],
+  } as Parameters<typeof useEditorStore.setState>[0])
   const site = state().createSite('HTML panel')
   const page = site.pages[0]
   const containerId = state().insertNode('base.container', {}, page.rootNodeId)
-  const textId = state().insertNode('base.text', { text: 'Hello {page.title}', tag: 'p' }, containerId)
+  const textId = state().insertNode(
+    'base.text',
+    { text: 'Hello {page.title}', tag: 'p' },
+    containerId,
+  )
   const siblingId = state().insertNode('base.text', { text: 'Bye', tag: 'p' }, containerId)
   state().renameNode(siblingId, 'Farewell')
   return { pageId: page.id, rootId: page.rootNodeId, containerId, textId, siblingId }
@@ -56,9 +66,12 @@ function replaceInDoc(view: EditorView, search: string, insert: string) {
 }
 
 const status = () => screen.getByTestId('html-panel-status').getAttribute('data-status')
-const applyButton = () => screen.getByTestId('html-panel-apply') as HTMLButtonElement
+const applyButton = () => screen.getByTestId('html-panel-review') as HTMLButtonElement
 // With a tooltip the Button primitive expresses disabled via aria-disabled.
-const applyDisabled = () => applyButton().disabled || applyButton().getAttribute('aria-disabled') === 'true'
+const applyDisabled = () =>
+  !screen.queryByTestId('html-panel-review') ||
+  applyButton().disabled ||
+  applyButton().getAttribute('aria-disabled') === 'true'
 const confirmDialog = () => screen.queryByTestId('html-panel-confirm-dialog')
 const docText = () => editorView().state.doc.toString()
 
@@ -94,7 +107,7 @@ describe('HtmlPanel', () => {
     state().selectNode(containerId)
     const view = await mountPanel()
     expect(view.state.doc.toString()).toContain(`\n  <p uid="${textId}">Hello {page.title}</p>\n`)
-    expect(applyDisabled()).toBe(true)
+    expect(screen.queryByTestId('html-panel-review')).toBeNull()
     expect(screen.getByTestId('html-panel-format')).toBeTruthy()
 
     replaceInDoc(view, 'Hello {page.title}', 'Hi {page.title}')
@@ -124,7 +137,7 @@ describe('HtmlPanel', () => {
     replaceInDoc(view, 'Hello {page.title}</p>', 'Hi {page.title}</p')
     await afterDebounce()
     expect(status()).toBe('syntax')
-    expect(applyDisabled()).toBe(true)
+    expect(screen.queryByTestId('html-panel-review')).toBeNull()
     expect(state().site!.pages[0].nodes[textId].props.text).toBe('Hello {page.title}')
     const brokenAt = view.state.doc.toString().indexOf('</p')
     act(() => {
@@ -165,7 +178,11 @@ describe('HtmlPanel', () => {
     await afterDebounce()
     expect(status()).toBe('held')
     const heldText = docText()
-    expect(Object.values(state().codeDockDrafts).some((d) => d.kind === 'html' && d.held?.kind === 'destructive')).toBe(true)
+    expect(
+      Object.values(state().codeDockDrafts).some(
+        (d) => d.kind === 'html' && d.held?.kind === 'destructive',
+      ),
+    ).toBe(true)
 
     cleanup()
     expect(document.querySelector('.cm-editor')).toBeNull()
@@ -175,20 +192,24 @@ describe('HtmlPanel', () => {
     expect(state().site!.pages[0].nodes[textId]).toBeTruthy()
   })
 
-  it("renders Component-instance internals read-only with a working jump to the definition", async () => {
+  it('renders Component-instance internals read-only with a working jump to the definition', async () => {
     const { containerId } = setup()
     const vcId = state().createVisualComponent('Card')
-    useEditorStore.setState({ activeDocument: { kind: 'visualComponent', vcId } } as Parameters<typeof useEditorStore.setState>[0])
+    useEditorStore.setState({ activeDocument: { kind: 'visualComponent', vcId } } as Parameters<
+      typeof useEditorStore.setState
+    >[0])
     const vcRootId = state().site!.visualComponents.find((v) => v.id === vcId)!.tree.rootNodeId
     const internalId = state().insertNode('base.text', { text: 'Inside', tag: 'p' }, vcRootId)
-    useEditorStore.setState({ activeDocument: null } as Parameters<typeof useEditorStore.setState>[0])
+    useEditorStore.setState({ activeDocument: null } as Parameters<
+      typeof useEditorStore.setState
+    >[0])
     const refId = state().insertComponentRef(containerId, vcId)!
     state().selectNode(internalId)
 
     const view = await mountPanel()
     expect(status()).toBe('read-only')
     expect(view.contentDOM.getAttribute('contenteditable')).toBe('false')
-    expect(screen.queryByTestId('html-panel-apply')).toBeNull()
+    expect(screen.queryByTestId('html-panel-review')).toBeNull()
 
     await act(async () => {
       fireEvent.click(screen.getByTestId('html-panel-open-definition'))
@@ -198,7 +219,9 @@ describe('HtmlPanel', () => {
     expect(editorView().contentDOM.getAttribute('contenteditable')).toBe('true')
 
     // Consumer side, the instance itself projects as an opaque marker that survives an edit-and-apply.
-    useEditorStore.setState({ activeDocument: null } as Parameters<typeof useEditorStore.setState>[0])
+    useEditorStore.setState({ activeDocument: null } as Parameters<
+      typeof useEditorStore.setState
+    >[0])
     act(() => {
       state().selectNode(containerId)
     })
@@ -206,17 +229,24 @@ describe('HtmlPanel', () => {
     replaceInDoc(editorView(), 'Hello {page.title}', 'Hey {page.title}')
     await afterDebounce()
     const page = state().site!.pages[0]
-    expect(page.nodes[refId]).toMatchObject({ moduleId: 'base.visual-component-ref', parentId: containerId })
+    expect(page.nodes[refId]).toMatchObject({
+      moduleId: 'base.visual-component-ref',
+      parentId: containerId,
+    })
     expect(Object.values(page.nodes).some((n) => n.props.text === 'Hey {page.title}')).toBe(true)
   })
 
   it('round-trips a slot instance and its user content through an edit-and-apply', async () => {
     const { containerId } = setup()
     const vcId = state().createVisualComponent('Card')
-    useEditorStore.setState({ activeDocument: { kind: 'visualComponent', vcId } } as Parameters<typeof useEditorStore.setState>[0])
+    useEditorStore.setState({ activeDocument: { kind: 'visualComponent', vcId } } as Parameters<
+      typeof useEditorStore.setState
+    >[0])
     const vcRootId = state().site!.visualComponents.find((v) => v.id === vcId)!.tree.rootNodeId
     state().insertNode('base.slot-outlet', { slotName: 'body' }, vcRootId)
-    useEditorStore.setState({ activeDocument: null } as Parameters<typeof useEditorStore.setState>[0])
+    useEditorStore.setState({ activeDocument: null } as Parameters<
+      typeof useEditorStore.setState
+    >[0])
     const refId = state().insertComponentRef(containerId, vcId)!
     const slotId = state().site!.pages[0].nodes[refId].children[0]
     expect(state().site!.pages[0].nodes[slotId].moduleId).toBe('base.slot-instance')
@@ -425,7 +455,9 @@ describe('HtmlPanel', () => {
       expect(screen.getByTestId('html-panel-orphaned').textContent).toContain('Intro')
       // The panel moved on to the page scope; the draft is not applied anywhere.
       expect(status()).toBe('clean')
-      expect(Object.values(state().site!.pages[0].nodes).some((n) => n.props.text === 'Orphan')).toBe(false)
+      expect(
+        Object.values(state().site!.pages[0].nodes).some((n) => n.props.text === 'Orphan'),
+      ).toBe(false)
 
       await act(async () => {
         fireEvent.click(screen.getByTestId('html-panel-orphan-dismiss'))

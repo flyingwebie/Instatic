@@ -15,8 +15,8 @@ import {
 } from './cssToolbarCatalog'
 import { CSS_TOOLBAR_ICONS } from './cssToolbarIcons'
 import { CssPropertyEditor } from './CssPropertyEditor'
-import { useCssToolbarOrder } from './cssToolbarOrder'
-import { CssToolbarOrderEditor } from './CssToolbarOrderEditor'
+import { useCssToolbarOrder, CSS_TOOLBAR_ITEMS } from './cssToolbarOrder'
+import { ControlOrderEditor } from '../ControlOrderEditor'
 import styles from './CssToolbar.module.css'
 
 function menuKeys(event: KeyboardEvent<HTMLDivElement>) {
@@ -344,7 +344,15 @@ export function CssToolbar({
           }}
         >
           {category === 'order' ? (
-            <CssToolbarOrderEditor items={items} saveOrder={saveOrder} />
+            <ControlOrderEditor
+              label="Toolbar order"
+              items={items.map((item) => {
+                const Icon = CSS_TOOLBAR_ICONS[item.icon]
+                return { ...item, icon: <Icon size={16} /> }
+              })}
+              defaultOrder={CSS_TOOLBAR_ITEMS.map((item) => item.id)}
+              saveOrder={saveOrder}
+            />
           ) : (
             <>
               <div

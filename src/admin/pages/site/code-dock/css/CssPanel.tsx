@@ -27,12 +27,22 @@ import { pushToast } from '@ui/components/Toast'
 import { cn } from '@ui/cn'
 import { useDocumentSync, type DocumentSyncSource } from '../useDocumentSync'
 import { deriveCssCompletionCatalog } from '../completions'
+import { PanelHeader, type PanelHeaderProps } from '../PanelHeader'
+import { CodeEditorSkeleton } from '@site/code-editor'
 import { FormatButton } from '../FormatButton'
 import { CssToolbar } from './CssToolbar'
 import type { CssToolbarCommand, CssToolbarContext } from '@site/code-editor/cssToolbarTypes'
 import type { CssPreset } from './cssToolbarCatalog'
-import { deriveCssPanelDocument, type CssPanelCanvas, type CssPanelDocument } from './cssPanelDocument'
-import { selectSelectionScope, selectionScopeEqual, type SelectionScopeInputs } from '../selectionScope'
+import {
+  deriveCssPanelDocument,
+  type CssPanelCanvas,
+  type CssPanelDocument,
+} from './cssPanelDocument'
+import {
+  selectSelectionScope,
+  selectionScopeEqual,
+  type SelectionScopeInputs,
+} from '../selectionScope'
 import styles from '../EditorColumn.module.css'
 
 const CodeMirrorEditor = lazy(() => import('@site/code-editor/CodeMirrorEditor'))
@@ -72,7 +82,7 @@ const syncSource: DocumentSyncSource<SelectionScopeInputs> = {
   },
 }
 
-export function CssPanel() {
+export function CssPanel({ headerActions }: PanelHeaderProps = {}) {
   // Deferred: the page-scope stylesheet is derived once a burst of store
   // changes settles, not per change.
   const inputs = useDeferredValue(useEditorStore(useShallow(selectSelectionScope)))
@@ -82,16 +92,23 @@ export function CssPanel() {
   const document: CssPanelDocument | null = deriveCssPanelDocument(inputs, canvas)
   // Status is remembered with the scope it belongs to, so a scope change
   // resets it without an effect.
-  const [scopedStatus, setScopedStatus] = useState<{ docKey: string; status: PanelStatus } | null>(null)
+  const [scopedStatus, setScopedStatus] = useState<{ docKey: string; status: PanelStatus } | null>(
+    null,
+  )
   const { revision, runOwnWrite } = useDocumentSync(syncSource)
   const editorRef = useRef<CodeMirrorEditorHandle | null>(null)
 
   const [toolbarContext, setToolbarContext] = useState<CssToolbarContext>({
-    rules: [], activeRule: null, declarations: {}, canEdit: false, canWrap: false,
+    rules: [],
+    activeRule: null,
+    declarations: {},
+    canEdit: false,
+    canWrap: false,
   })
   const runCssCommand = (command: CssToolbarCommand) => {
     const result = editorRef.current?.runCssCommand(command)
-    if (result && !result.ok) pushToast({ kind: 'error', title: 'Could not edit CSS', body: result.error })
+    if (result && !result.ok)
+      pushToast({ kind: 'error', title: 'Could not edit CSS', body: result.error })
   }
 
   const docKey = document ? `${document.docKey}#${revision}` : null
@@ -111,11 +128,19 @@ export function CssPanel() {
     if (!document) return
     if (info.syntaxErrorCount > 0) {
       setStatus({ kind: 'syntax', count: info.syntaxErrorCount })
-      setCodeDockDraft(document.docKey, { kind: 'css', text, syntaxErrorCount: info.syntaxErrorCount })
+      setCodeDockDraft(document.docKey, {
+        kind: 'css',
+        text,
+        syntaxErrorCount: info.syntaxErrorCount,
+      })
       return
     }
     if (draft) setCodeDockDraft(document.docKey, null)
-    const plan = planStylesheetEdit({ text, projection: document.projection, breakpoints: document.breakpoints })
+    const plan = planStylesheetEdit({
+      text,
+      projection: document.projection,
+      breakpoints: document.breakpoints,
+    })
     const result = runOwnWrite(() => applyStylesheetEdit(plan.edit))
     const blocked = [...new Set([...plan.blockedSelectors, ...result.blockedSelectors])]
     if (blocked.length > 0) setStatus({ kind: 'blocked', selectors: blocked })
@@ -124,20 +149,40 @@ export function CssPanel() {
   }
 
   if (!document || docKey === null || !inputs.site) {
-    return <p className={styles.empty}>Open a page to edit its CSS.</p>
+    return (
+      <>
+        <PanelHeader label="CSS" actions={headerActions}>
+          <span />
+        </PanelHeader>
+        <p className={styles.empty}>Open a page to edit its CSS.</p>
+      </>
+    )
   }
 
   const completions = deriveCssCompletionCatalog(inputs.site)
 
-  const conditions: CssPreset[] = inputs.site.breakpoints.filter((bp) => bp.mediaQuery).map((bp) => ({
-    label: bp.label,
-    icon: 'monitor',
-    command: { kind: 'wrap', condition: `@media ${bp.mediaQuery}` },
-  }))
+  const conditions: CssPreset[] = inputs.site.breakpoints
+    .filter((bp) => bp.mediaQuery)
+    .map((bp) => ({
+      label: bp.label,
+      icon: 'monitor',
+      command: { kind: 'wrap', condition: `@media ${bp.mediaQuery}` },
+    }))
 
   return (
     <div className={styles.panel} data-testid="css-panel">
-      <div className={styles.toolbar}>
+      <PanelHeader
+        label="CSS"
+        actions={
+          <>
+            <FormatButton
+              onFormat={() => void editorRef.current?.format()}
+              testId="css-panel-format"
+            />
+            {headerActions}
+          </>
+        }
+      >
         <span
           className={cn(
             styles.toolbarNote,
@@ -150,13 +195,15 @@ export function CssPanel() {
         >
           {statusText(status)}
         </span>
-        <span className={styles.toolbarActions}>
-          <FormatButton onFormat={() => void editorRef.current?.format()} testId="css-panel-format" />
-        </span>
-      </div>
-      <CssToolbar key={docKey} context={toolbarContext} run={runCssCommand} conditions={conditions} />
+      </PanelHeader>
+      <CssToolbar
+        key={docKey}
+        context={toolbarContext}
+        run={runCssCommand}
+        conditions={conditions}
+      />
       <div className={styles.editor}>
-        <Suspense fallback={<div className={styles.loading}>Loading editor</div>}>
+        <Suspense fallback={<CodeEditorSkeleton />}>
           <CodeMirrorEditor
             ref={editorRef}
             docKey={docKey}
@@ -169,7 +216,9 @@ export function CssPanel() {
             completions={completions}
             onChange={onChange}
             onCssContextChange={setToolbarContext}
-            onFormatError={(message) => pushToast({ kind: 'error', title: 'Could not format the CSS', body: message })}
+            onFormatError={(message) =>
+              pushToast({ kind: 'error', title: 'Could not format the CSS', body: message })
+            }
           />
         </Suspense>
       </div>

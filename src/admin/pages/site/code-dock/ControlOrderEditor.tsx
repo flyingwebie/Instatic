@@ -1,19 +1,21 @@
-import { useRef, useState } from 'react'
+import { useRef, useState, type ReactNode, type CSSProperties } from 'react'
 import { ArrowLeftIcon } from 'pixel-art-icons/icons/arrow-left'
 import { ArrowRightIcon } from 'pixel-art-icons/icons/arrow-right'
 import { ReloadIcon } from 'pixel-art-icons/icons/reload'
 import { Button } from '@ui/components/Button'
 import { Separator } from '@ui/components/Separator'
 import { cn } from '@ui/cn'
-import { CSS_TOOLBAR_ITEMS } from './cssToolbarOrder'
-import { CSS_TOOLBAR_ICONS } from './cssToolbarIcons'
-import styles from './CssToolbar.module.css'
+import styles from './ControlOrderEditor.module.css'
 
-export function CssToolbarOrderEditor({
+export function ControlOrderEditor({
   items,
   saveOrder,
+  defaultOrder,
+  label,
 }: {
-  items: typeof CSS_TOOLBAR_ITEMS
+  items: { id: string; label: string; icon: ReactNode }[]
+  defaultOrder: readonly string[]
+  label: string
   saveOrder: (ids: readonly string[]) => void
 }) {
   const [selected, setSelected] = useState(items[0].id)
@@ -38,10 +40,10 @@ export function CssToolbarOrderEditor({
         ref={rowRef}
         className={cn(styles.settings, styles.orderPalette)}
         role="group"
-        aria-label="Toolbar order"
+        aria-label={label}
+        style={{ '--order-columns': Math.min(5, items.length) } as CSSProperties}
       >
         {items.map((item, position) => {
-          const Icon = CSS_TOOLBAR_ICONS[item.icon]
           return (
             <Button
               key={item.id}
@@ -101,7 +103,7 @@ export function CssToolbarOrderEditor({
                 })
               }}
             >
-              <Icon size={16} />
+              {item.icon}
             </Button>
           )
         })}
@@ -134,9 +136,9 @@ export function CssToolbarOrderEditor({
           variant="ghost"
           size="xs"
           iconOnly
-          aria-label="Reset toolbar order"
-          tooltip="Reset toolbar order"
-          onClick={() => saveOrder(CSS_TOOLBAR_ITEMS.map((item) => item.id))}
+          aria-label={`Reset ${label.toLowerCase()}`}
+          tooltip={`Reset ${label.toLowerCase()}`}
+          onClick={() => saveOrder(defaultOrder)}
         >
           <ReloadIcon size={16} />
         </Button>

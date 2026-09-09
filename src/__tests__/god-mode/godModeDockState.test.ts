@@ -15,12 +15,15 @@ import {
   selectSiteLayoutState,
   siteLayoutFromSelection,
   restoreStoredSiteEditorLayout,
+  writeSiteEditorLayout,
+  restorePersistedSiteEditorLayout,
 } from '@site/layout/siteEditorLayoutPersistence'
 import {
   CODE_DOCK_MIN_HEIGHT,
   CODE_DOCK_MAX_HEIGHT,
   CODE_DOCK_MIN_COLUMN_WEIGHT,
 } from '@site/store/slices/codeDockSlice'
+import { EDITOR_LAYOUT_STORAGE_KEY } from '@admin/state/workspaceLayoutStorage'
 import { PREFERENCE_CATALOG } from '@site/preferences/catalog'
 import { getGodModeCommands } from '@admin/spotlight/commands/godMode'
 import { getKeybindingForCommand } from '@admin/spotlight/keybindings'
@@ -31,6 +34,7 @@ function resetGodModeState() {
     codeDockHeight: 280,
     codeDockPanels: { html: true, css: true, js: true },
     codeDockActiveTab: 'html',
+    codeDockPanelOrder: ['html', 'css', 'js'],
     codeDockColumnWeights: { html: 1, css: 1, js: 1 },
     selectedNodeId: null,
     selectedSelectorClassId: null,
@@ -84,9 +88,17 @@ describe('uiSlice — god mode + code dock state', () => {
 
   it('setCodeDockColumnWeights floors each weight so no column can vanish', () => {
     useEditorStore.getState().setCodeDockColumnWeights({ html: 2, css: 0.001, js: 1 })
-    expect(useEditorStore.getState().codeDockColumnWeights).toEqual({ html: 2, css: CODE_DOCK_MIN_COLUMN_WEIGHT, js: 1 })
+    expect(useEditorStore.getState().codeDockColumnWeights).toEqual({
+      html: 2,
+      css: CODE_DOCK_MIN_COLUMN_WEIGHT,
+      js: 1,
+    })
     useEditorStore.getState().setCodeDockColumnWeights({ html: 0, css: 1, js: 1 })
-    expect(useEditorStore.getState().codeDockColumnWeights).toEqual({ html: 2, css: CODE_DOCK_MIN_COLUMN_WEIGHT, js: 1 })
+    expect(useEditorStore.getState().codeDockColumnWeights).toEqual({
+      html: 2,
+      css: CODE_DOCK_MIN_COLUMN_WEIGHT,
+      js: 1,
+    })
   })
 
   it('setCodeDockActiveTab switches the narrow-mode tab', () => {
@@ -136,9 +148,7 @@ describe('site layout persistence — code dock fields', () => {
       codeDockActiveTab: 'css',
       codeDockColumnWeights: { html: 2, css: 1, js: 1 },
     } as never)
-    const stored = siteLayoutFromSelection(
-      selectSiteLayoutState(useEditorStore.getState()),
-    )
+    const stored = siteLayoutFromSelection(selectSiteLayoutState(useEditorStore.getState()))
     expect(stored.godModeActive).toBe(true)
     expect(stored.codeDockHeight).toBe(333)
     expect(stored.codeDockPanels).toEqual({ html: true, css: false, js: true })
@@ -168,6 +178,22 @@ describe('site layout persistence — code dock fields', () => {
     const s = useEditorStore.getState()
     expect(s.codeDockHeight).toBe(300)
     expect(s.godModeActive).toBe(true)
+  })
+
+  it('saves and restores panel order, completing partial saved orders without duplicates', () => {
+    const previous = localStorage.getItem(EDITOR_LAYOUT_STORAGE_KEY)
+    try {
+      useEditorStore.getState().setCodeDockPanelOrder(['js', 'css', 'html'])
+      writeSiteEditorLayout(selectSiteLayoutState(useEditorStore.getState()))
+      useEditorStore.getState().setCodeDockPanelOrder(['html', 'css', 'js'])
+      restorePersistedSiteEditorLayout(useEditorStore)
+      expect(useEditorStore.getState().codeDockPanelOrder).toEqual(['js', 'css', 'html'])
+      restoreStoredSiteEditorLayout(useEditorStore, { codeDockPanelOrder: ['css', 'css', 'unknown'] })
+      expect(useEditorStore.getState().codeDockPanelOrder).toEqual(['css', 'html', 'js'])
+    } finally {
+      if (previous === null) localStorage.removeItem(EDITOR_LAYOUT_STORAGE_KEY)
+      else localStorage.setItem(EDITOR_LAYOUT_STORAGE_KEY, previous)
+    }
   })
 
   it('ignores malformed stored dock fields (wrong types, unknown panels)', () => {

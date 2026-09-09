@@ -103,6 +103,8 @@ export interface StoredWorkspaceLayout {
   codeDockHeight?: number
   /** Per-column visibility of the Code Dock panels, keyed by 'html' | 'css' | 'js'. */
   codeDockPanels?: Record<string, boolean>
+  /** Preferred order of the Code Dock panels, including hidden panels. */
+  codeDockPanelOrder?: string[]
   /** Panel shown while the Code Dock is in narrow-window tabbed mode. */
   codeDockActiveTab?: string
   /** Relative flex weights of the Code Dock columns. */
@@ -163,6 +165,7 @@ const StoredWorkspaceLayoutSchema = Type.Object(
     codeDockHeight: Type.Optional(Type.Number()),
     codeDockPanels: Type.Optional(Type.Record(Type.String(), Type.Boolean())),
     codeDockActiveTab: Type.Optional(Type.String()),
+    codeDockPanelOrder: Type.Optional(Type.Array(Type.String())),
     codeDockColumnWeights: Type.Optional(Type.Record(Type.String(), Type.Number())),
   },
   { additionalProperties: true },
@@ -171,15 +174,9 @@ const StoredWorkspaceLayoutSchema = Type.Object(
 const StoredEditorLayoutSchema = Type.Object(
   {
     version: Type.Literal(2),
-    panelPositions: Type.Optional(
-      Type.Record(Type.String(), PanelPositionSchema),
-    ),
-    panelSizes: Type.Optional(
-      Type.Record(Type.String(), PanelSizeSchema),
-    ),
-    workspaces: Type.Optional(
-      Type.Record(Type.String(), StoredWorkspaceLayoutSchema),
-    ),
+    panelPositions: Type.Optional(Type.Record(Type.String(), PanelPositionSchema)),
+    panelSizes: Type.Optional(Type.Record(Type.String(), PanelSizeSchema)),
+    workspaces: Type.Optional(Type.Record(Type.String(), StoredWorkspaceLayoutSchema)),
   },
   { additionalProperties: true },
 )
@@ -191,15 +188,23 @@ function storageAvailable() {
 function isPanelPosition(value: unknown): value is PanelPosition {
   if (!value || typeof value !== 'object') return false
   const pos = value as Partial<PanelPosition>
-  return typeof pos.x === 'number' && Number.isFinite(pos.x)
-    && typeof pos.y === 'number' && Number.isFinite(pos.y)
+  return (
+    typeof pos.x === 'number' &&
+    Number.isFinite(pos.x) &&
+    typeof pos.y === 'number' &&
+    Number.isFinite(pos.y)
+  )
 }
 
 function isPanelSize(value: unknown): value is PanelSize {
   if (!value || typeof value !== 'object') return false
   const size = value as Partial<PanelSize>
-  return typeof size.width === 'number' && Number.isFinite(size.width)
-    && typeof size.height === 'number' && Number.isFinite(size.height)
+  return (
+    typeof size.width === 'number' &&
+    Number.isFinite(size.width) &&
+    typeof size.height === 'number' &&
+    Number.isFinite(size.height)
+  )
 }
 
 export function readEditorLayout(): StoredEditorLayout | null {
@@ -220,9 +225,7 @@ function writeEditorLayout(layout: StoredEditorLayout) {
   }
 }
 
-function updateEditorLayout(
-  updater: (layout: StoredEditorLayout) => StoredEditorLayout,
-) {
+function updateEditorLayout(updater: (layout: StoredEditorLayout) => StoredEditorLayout) {
   const current = readEditorLayout() ?? { version: 2 as const }
   writeEditorLayout(updater(current))
 }
@@ -231,9 +234,7 @@ function updateEditorLayout(
  * Read the stored layout for a single workspace. Returns an empty object when
  * no state has been persisted yet — callers should layer their own defaults.
  */
-export function readWorkspaceLayout(
-  workspace: EditorWorkspaceId,
-): StoredWorkspaceLayout {
+export function readWorkspaceLayout(workspace: EditorWorkspaceId): StoredWorkspaceLayout {
   return readEditorLayout()?.workspaces?.[workspace] ?? {}
 }
 

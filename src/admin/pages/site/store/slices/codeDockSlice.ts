@@ -29,6 +29,10 @@ export function isCodeDockPanelId(value: unknown): value is CodeDockPanelId {
   return value === 'html' || value === 'css' || value === 'js'
 }
 
+export function normalizeCodeDockPanelOrder(order: readonly string[]): CodeDockPanelId[] {
+  return [...new Set([...order.filter(isCodeDockPanelId), ...CODE_DOCK_PANEL_IDS])]
+}
+
 export function clampCodeDockHeight(height: number): number {
   return Math.min(CODE_DOCK_MAX_HEIGHT, Math.max(CODE_DOCK_MIN_HEIGHT, height))
 }
@@ -48,6 +52,8 @@ interface CodeDockSlice {
   codeDockPanels: CodeDockPanelVisibility
   /** Panel shown when the dock is in narrow-window tabbed mode. */
   codeDockActiveTab: CodeDockPanelId
+  /** Preferred left-to-right panel order, including hidden panels. */
+  codeDockPanelOrder: CodeDockPanelId[]
   /** Relative flex weights of the visible columns (all > 0). */
   codeDockColumnWeights: CodeDockColumnWeights
   /** The panels' unapplied buffers, by document key — see `codeDockDrafts.ts`. */
@@ -63,6 +69,7 @@ interface CodeDockSlice {
   toggleCodeDockPanel: (panel: CodeDockPanelId) => void
   /** Pick the visible panel while the dock is in tabbed (narrow) mode. */
   setCodeDockActiveTab: (panel: CodeDockPanelId) => void
+  setCodeDockPanelOrder: (order: readonly string[]) => void
   /** Replace column weights. Ignored unless every weight is finite and > 0. */
   setCodeDockColumnWeights: (weights: CodeDockColumnWeights) => void
   /** Store (or, with null, drop) a panel's draft for a document key. */
@@ -80,6 +87,7 @@ export const createCodeDockSlice: EditorStoreSliceCreator<CodeDockSlice> = (set,
   codeDockHeight: CODE_DOCK_DEFAULT_HEIGHT,
   codeDockPanels: { html: true, css: true, js: true },
   codeDockActiveTab: 'html',
+  codeDockPanelOrder: [...CODE_DOCK_PANEL_IDS],
   codeDockColumnWeights: { html: 1, css: 1, js: 1 },
   codeDockDrafts: {},
 
@@ -109,6 +117,8 @@ export const createCodeDockSlice: EditorStoreSliceCreator<CodeDockSlice> = (set,
     if (Object.is(get().codeDockActiveTab, panel)) return
     set({ codeDockActiveTab: panel })
   },
+
+  setCodeDockPanelOrder: (order) => set({ codeDockPanelOrder: normalizeCodeDockPanelOrder(order) }),
 
   setCodeDockColumnWeights: (weights) => {
     const valid = CODE_DOCK_PANEL_IDS.every(

@@ -1,1 +1,2 @@
-export { CodeEditorPanel, CodeEditorSkeleton } from './CodeEditorPanel'
+export { CodeEditorPanel } from './CodeEditorPanel'
+export { CodeEditorSkeleton } from './CodeEditorSkeleton'
