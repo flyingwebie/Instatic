@@ -8,7 +8,8 @@
   height: var(--code-dock-height);
   min-height: 0;
   background: var(--bg-body);
-  border: 1px solid var(--border);
+  border: 1px solid var(--border-muted);
+  border-radius: var(--panel-radius);
 }
 
 .heightHandle {
@@ -52,7 +53,7 @@
   align-items: center;
   gap: var(--space-s);
   padding: var(--space-2xs) var(--space-s);
-  border-bottom: 1px solid var(--border);
+  border-bottom: 1px solid var(--border-muted);
 }
 
 .panelToggles {
@@ -114,6 +115,7 @@
   flex: 1 1 0;
   min-width: 0;
   min-height: 0;
+  padding: var(--space-3xs);
 }
 
 .columnDivider {
@@ -129,11 +131,12 @@
 .columnDivider::after {
   content: '';
   position: absolute;
-  top: 0;
-  bottom: 0;
+  top: var(--space-xs);
+  bottom: var(--space-xs);
   left: 3px;
   width: 1px;
-  background: var(--border);
+  background: var(--border-muted);
+  border-radius: var(--radius);
 }
 
 .columnDivider:hover::after,

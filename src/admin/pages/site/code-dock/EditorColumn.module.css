@@ -10,16 +10,20 @@
   flex: 1;
   min-height: 0;
   background: var(--bg-surface);
+  border: 1px solid var(--border-muted);
+  border-radius: var(--panel-radius);
 }
 
 .editor [data-codemirror-container] {
   height: 100%;
   min-height: 0;
+  border-radius: inherit;
 }
 
 .editor :global(.cm-editor) {
   height: 100%;
   background: var(--bg-surface);
+  border-radius: inherit;
 }
 
 .editor :global(.cm-gutters) {
@@ -38,6 +42,7 @@
 
 .editor :global(.cm-scroller) {
   min-height: 0;
+  border-radius: inherit;
 }
 
 .empty {

@@ -90,8 +90,9 @@ retain their existing review safeguards.
   arrow keys resize in discrete steps.
 - **Theme** — editor surfaces use a lighter shade than the workspace background,
   with a second shade distinguishing the line-number gutters.
-  Token-based borders frame the dock and separate its columns and toolbars;
-  the grip highlights on hover, keyboard focus, and drag.
+  Soft token-based borders and the shared panel radius frame the dock and code
+  surfaces; inset dividers separate its columns and toolbars.
+  The grip highlights on hover, keyboard focus, and drag.
 - **Compact headers** — each panel has one row for its title, live status,
   Format icon, and expand icon. Normal edits apply as you type; no permanent
   Apply button is shown.
