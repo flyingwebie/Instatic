@@ -47,9 +47,14 @@ outlives the entitlement (preference turned off, capability revoked), an effect 
 
 ## What the mode changes
 
-- **Right sidebar hidden** — `selectRightSidebarExpanded`
+- **Right sidebar hidden except for loop settings** — `selectRightSidebarExpanded`
   (`src/admin/pages/site/store/store.ts`) returns false while `godModeActive`.
-  Only the *docked* sidebar is suppressed: the Properties panel can still be
+  Selecting a single editable loop opens a fixed right sidebar containing only
+  its module settings (source, filters, sorting, limits, and pagination), while
+  the Code Dock stays open. It has no style tabs, class picker, or floating-window
+  controls. Selecting another kind of element dismisses this loop inspector.
+  The Properties Panel action reopens it if closed.
+  For other selections, only the *docked* sidebar is suppressed: the Properties panel can still be
   opened as a **floating window** (the Code Dock header's icon with the
   "Properties Panel" tooltip switches `propertiesPanelMode` to floating), because module-specific controls
   (image pickers, form settings, loop source pickers) have no code
@@ -59,6 +64,12 @@ outlives the entitlement (preference turned off, capability revoked), an effect 
   width. Its controls render immediately; each editor loads independently
   with a code skeleton. Hovering or focusing the God Mode toggle preloads
   the panel modules and CodeMirror in parallel, also started when the dock mounts.
+
+HTML projection updates preserve the current source layout when the element
+structure is unchanged: edits to loop settings patch attribute values without
+collapsing formatted attributes or remounting CodeMirror. Newly assigned uids are
+inserted in place. Structural changes use a fresh projection; held/stale drafts
+retain their existing review safeguards.
 
 ## Code Dock layout
 
@@ -148,8 +159,10 @@ projection of the current selection, applied back to the tree as you type.
   a large page until the renderer ran out of memory. The buffer is then brought up to the fresh
   projection **in place** (`CodeMirrorEditor`'s `syncValue`: the minimal
   line edits from `code-editor/documentDiff.ts`, so the caret, history and
-  folds survive) — a typed `<p>` gains its `uid`, and the text settles into
-  the canonical reflow. Nothing touches the tree while the document has
+  folds survive) — a typed `<p>` gains its `uid`. Attribute and value updates
+  retain the current whitespace; structural changes use the fresh projection.
+  Formatting flushes immediately, and leaving the editor flushes pending typing
+  before another inspector control edits the same node. Nothing touches the tree while the document has
   syntax errors (`lintSyntax` diagnostics inline, count in the toolbar), and
   never in the read-only view. A change the guardrails below hold is
   applied through the contextual **Review edits** action or **⌘↩** (the editor's
@@ -167,17 +180,13 @@ projection of the current selection, applied back to the tree as you type.
   the panel, or the tab fallback never discards them and coming back restores
   them; the toolbar shows why the draft is held and the last apply result
   ("Applied · 2 patched · 1 created").
-- **Sync** — a clean scope re-syncs its buffer on external tree changes
-  (canvas undo, a co-editor) through the shared `useDocumentSync`, with no
-  banner; a dirty scope keeps its draft verbatim and its buffer mounted
-  (`holdRemounts`), so caret and text history survive every store change —
-  including the remote ones the stale banner reports. Projections are
-  expensive on a large page, so `useDocumentSync` coalesces its reads to one
-  per animation frame against the latest state, and the panels derive from
-  `useDeferredValue`d inputs: a burst of hundreds of store changes in one
-  task (a collab document loading node by node, an agent batch) costs one
-  projection, not one per change. Re-projecting per notification allocated a
-  whole document per node and exhausted the renderer on a real site.
+- **Sync** — a clean scope patches its mounted buffer on external tree changes
+  (canvas undo, inspector edits, or a co-editor) through `syncValue` and
+  `syncProjectionFormatting`. A dirty scope keeps its draft verbatim, including
+  the remote changes the stale banner reports. Only a scope change re-keys the
+  editor. The HTML panel derives from deferred inputs, so bursts of store
+  updates can settle before projecting; it no longer needs a second projection
+  subscription to distinguish its own writes from external ones.
 - **Guardrails** — two, and every other change applies live. Each draft
   records the projection it started from (`baseHtml`), so both are *derived*
   from state rather than tracked by subscriptions:

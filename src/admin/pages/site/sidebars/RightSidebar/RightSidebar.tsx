@@ -1,6 +1,6 @@
 import { useRef, type CSSProperties } from 'react'
-import { selectRightSidebarExpanded, useEditorStore } from '@site/store/store'
-import { PropertiesPanel } from '@site/panels/PropertiesPanel'
+import { selectCodeDockLoopNode, selectRightSidebarExpanded, useEditorStore } from '@site/store/store'
+import { LoopSettingsPanel, PropertiesPanel } from '@site/panels/PropertiesPanel'
 import { SidebarResizeHandle } from '@admin/shared/SidebarResizeHandle'
 import styles from './RightSidebar.module.css'
 
@@ -29,6 +29,7 @@ export function RightSidebar({ mode }: RightSidebarProps) {
   const propertiesPanelMode = useEditorStore((s) => s.propertiesPanelMode)
   const setPropertiesPanel = useEditorStore((s) => s.setPropertiesPanel)
 
+  const loopNode = useEditorStore(selectCodeDockLoopNode)
   const isDocked = propertiesPanelMode === 'docked'
   const sitePropertiesExpanded = useEditorStore(selectRightSidebarExpanded)
 
@@ -53,7 +54,7 @@ export function RightSidebar({ mode }: RightSidebarProps) {
       className={styles.sidebar}
       data-testid="right-sidebar"
       data-expanded={isExpanded ? 'true' : 'false'}
-      data-mode={propertiesPanelMode}
+      data-mode={loopNode ? 'docked' : propertiesPanelMode}
       style={style}
     >
       {isExpanded && (
@@ -68,13 +69,13 @@ export function RightSidebar({ mode }: RightSidebarProps) {
         />
       )}
 
-      {mode === 'site' && isDocked && (
+      {mode === 'site' && (isDocked || loopNode) && (
         <div
           className={styles.panelSlot}
           data-testid="right-sidebar-panel-slot"
           inert={isExpanded ? undefined : true}
         >
-          <PropertiesPanel variant="docked" />
+          {loopNode ? <LoopSettingsPanel /> : <PropertiesPanel variant="docked" />}
         </div>
       )}
     </aside>

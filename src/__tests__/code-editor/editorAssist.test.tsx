@@ -5,7 +5,7 @@
  * turned off, and `format()` reports unsupported documents.
  */
 import { afterEach, describe, expect, it } from 'bun:test'
-import { act, cleanup, render } from '@testing-library/react'
+import { act, cleanup, fireEvent, render } from '@testing-library/react'
 import { EditorView } from '@codemirror/view'
 import { EditorState } from '@codemirror/state'
 import { CompletionContext, completionStatus, startCompletion, type CompletionSource } from '@codemirror/autocomplete'
@@ -36,6 +36,7 @@ async function mount(props: {
   language: 'css' | 'html' | 'text'
   syncValue?: boolean
   lintGutter?: boolean
+  changeDelayMs?: number
 }): Promise<Mounted> {
   const changes: string[] = []
   const handleRef: { current: CodeMirrorEditorHandle | null } = { current: null }
@@ -45,7 +46,7 @@ async function mount(props: {
       docKey="assist"
       value={value}
       language={props.language}
-      changeDelayMs={0}
+      changeDelayMs={props.changeDelayMs ?? 0}
       syncValue={props.syncValue}
       lintGutter={props.lintGutter}
       completions={props.language === 'css' ? cssCatalog : undefined}
@@ -161,6 +162,20 @@ describe('CodeMirrorEditor assists', () => {
     expect(view.state.doc.toString()).toBe('.card {\n  color: red;\n  margin: 0;\n}\n')
     expect(view.state.doc.sliceString(view.state.selection.main.head - 2, view.state.selection.main.head)).toBe('re')
     expect(changes.at(-1)).toBe('.card {\n  color: red;\n  margin: 0;\n}\n')
+  })
+
+  it('flushes formatting before the next inspector edit can start', async () => {
+    const { view, changes, handle } = await mount({ value: '<div><p>Hello</p></div>', language: 'html', changeDelayMs: 10000 })
+    await act(() => handle.format())
+    expect(changes).toEqual([view.state.doc.toString()])
+  })
+
+  it('flushes a pending edit when focus leaves the editor for an inspector control', async () => {
+    const { view, changes } = await mount({ value: '<p>Hello</p>', language: 'html', changeDelayMs: 10000 })
+    act(() => { view.dispatch({ changes: { from: 3, to: 8, insert: 'Updated' } }) })
+    expect(changes).toEqual([])
+    act(() => { fireEvent.blur(view.contentDOM) })
+    expect(changes).toEqual(['<p>Updated</p>'])
   })
 
   it('reports an unformattable document instead of throwing', async () => {

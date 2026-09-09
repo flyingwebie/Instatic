@@ -1,0 +1,14 @@
+.panel {
+    display: flex;
+    flex-direction: column;
+    height: 100%;
+    min-height: 0;
+    outline: none;
+}
+
+.controls {
+    flex: 1;
+    min-height: 0;
+    overflow-y: auto;
+    padding: var(--space-m) var(--space-l);
+}

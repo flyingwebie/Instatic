@@ -187,9 +187,10 @@ interface CodeMirrorEditorProps {
    * the buffer is patched IN PLACE with the minimal line edits (caret,
    * history and folds survive) instead of ignoring it. Skipped while an
    * edit is still pending, which would be overwritten by the flush anyway.
+   * A function can reconcile the projection with the current source layout.
    * Such patches never re-enter `onChange`.
    */
-  syncValue?: boolean
+  syncValue?: boolean | ((current: string, projected: string) => string)
   /** Show the lint marker gutter column (diagnostics stay inline without it). */
   lintGutter?: boolean
   /** Formatting (Shift-Alt-F or `format()`) failed — e.g. the document does not parse. */
@@ -430,12 +431,28 @@ export default function CodeMirrorEditor({
     onFormatErrorRef.current = onFormatError
   }, [onFormatError])
 
+  // useCallback kept: stable identity for the [flush] useEffect dep array (exhaustive-deps).
+  // Flush pending content to the store immediately (called on doc switch).
+  const flush = useCallback(() => {
+    if (timerRef.current) {
+      clearTimeout(timerRef.current)
+      timerRef.current = null
+    }
+    if (pendingChangeRef.current !== null) {
+      // Flush-on-switch: persist pending edit before unmounting.
+      const { content, info } = pendingChangeRef.current
+      pendingChangeRef.current = null
+      onChangeRef.current(content, info)
+    }
+  }, [])
+
   const format = async (): Promise<FormatResult> => {
     const view = viewRef.current
     if (!view) return { ok: false, error: 'No document is open' }
     if (!isFormattableLanguage(language)) return { ok: false, error: 'This document type cannot be formatted' }
     const result = await formatDocument(view, language)
     if (!result.ok) onFormatErrorRef.current?.(result.error)
+    else flush()
     return result
   }
   const formatRef = useRef(format)
@@ -452,21 +469,6 @@ export default function CodeMirrorEditor({
   }), [language])
   const cssContextHandlerRef = useRef(onCssContextChange)
   useEffect(() => { cssContextHandlerRef.current = onCssContextChange }, [onCssContextChange])
-
-  // useCallback kept: stable identity for the [flush] useEffect dep array (exhaustive-deps).
-  // Flush pending content to the store immediately (called on doc switch).
-  const flush = useCallback(() => {
-    if (timerRef.current) {
-      clearTimeout(timerRef.current)
-      timerRef.current = null
-    }
-    if (pendingChangeRef.current !== null) {
-      // Flush-on-switch: persist pending edit before unmounting.
-      const { content, info } = pendingChangeRef.current
-      pendingChangeRef.current = null
-      onChangeRef.current(content, info)
-    }
-  }, [])
 
   // Mount/destroy CM6 view when docKey changes (document switch).
   //
@@ -509,6 +511,13 @@ export default function CodeMirrorEditor({
               },
             },
           ])),
+          EditorView.domEventHandlers({
+            blur: () => {
+              // Commit before another inspector control changes the same node.
+              flush()
+              return false
+            },
+          }),
           basicSetup,
           ...getLanguageExtensions(language),
           ...(typeScriptClient && filePath
@@ -667,7 +676,10 @@ export default function CodeMirrorEditor({
     if (!view || pendingChangeRef.current !== null) return
     const current = view.state.doc.toString()
     if (current === value) return
-    view.dispatch({ changes: documentChanges(current, value), annotations: [valueSync.of(true)] })
+    const next = typeof syncValue === 'function' ? syncValue(current, value) : value
+    if (current !== next) {
+      view.dispatch({ changes: documentChanges(current, next), annotations: [valueSync.of(true)] })
+    }
   }, [value, syncValue])
 
   useEffect(() => {

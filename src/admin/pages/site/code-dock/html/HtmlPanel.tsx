@@ -9,7 +9,8 @@
  * when the result is harmless, `applyProjectionImport` at once — one flush,
  * one tree-undo step, canvas and layer panel repaint. The buffer is then
  * brought up to the fresh projection IN PLACE (`syncValue`: new uids, the
- * canonical reflow) so the caret never jumps. Nothing touches the tree
+ * attribute/value changes) while retaining the author's whitespace. Nothing
+ * touches the tree
  * while the document has syntax errors, and never in the read-only view of
  * a Component instance's internals (those jump to the definition).
  *
@@ -23,7 +24,7 @@
  *     summary instead of committing.
  *   - STALE: the projection for a dirty scope no longer matches the draft's
  *     baseline — a co-editor, an agent, or a tree undo changed the subtree.
- *     The draft and its buffer stay verbatim (`holdRemounts`), a banner says
+ *     The draft and its buffer stay verbatim (without remounting), a banner says
  *     so, and Apply becomes overwrite-with-confirm. The only ways out are
  *     explicit: apply over it, or discard the draft.
  *
@@ -56,19 +57,15 @@ import { Button } from '@ui/components/Button'
 import { ChevronRightIcon } from 'pixel-art-icons/icons/chevron-right'
 import { pushToast } from '@ui/components/Toast'
 import { cn } from '@ui/cn'
-import { useDocumentSync, type DocumentSyncSource } from '../useDocumentSync'
 import { deriveHtmlCompletionCatalog, useDataMeta } from '../completions'
 import { PanelHeader, type PanelHeaderProps } from '../PanelHeader'
 import { CodeEditorSkeleton } from '@site/code-editor'
 import { FormatButton } from '../FormatButton'
+import { syncProjectionFormatting } from './syncProjectionFormatting'
 import { deriveHtmlPanelDocument, type HtmlPanelDocument } from './htmlPanelDocument'
 import { summarizeDestructiveApply, type DestructiveRemoval } from './applyGuardrails'
 import { HtmlApplyConfirmDialog } from './HtmlApplyConfirmDialog'
-import {
-  selectSelectionScope,
-  selectionScopeEqual,
-  type SelectionScopeInputs,
-} from '../selectionScope'
+import { selectSelectionScope } from '../selectionScope'
 import styles from '../EditorColumn.module.css'
 
 const CodeMirrorEditor = lazy(() => import('@site/code-editor/CodeMirrorEditor'))
@@ -77,15 +74,6 @@ const APPLY_SHORTCUT = formatShortcut(getKeybindingForCommand('godMode.applyHtml
 
 /** Live-apply debounce: long enough to coalesce a burst of typing into one undo step. */
 export const HTML_PANEL_APPLY_DELAY_MS = 300
-
-const syncSource: DocumentSyncSource<SelectionScopeInputs> = {
-  select: selectSelectionScope,
-  equal: selectionScopeEqual,
-  read: (inputs) => {
-    const next = deriveHtmlPanelDocument(inputs)
-    return next ? { docKey: next.docKey, text: next.html } : null
-  },
-}
 
 interface AppliedReport {
   docKey: string
@@ -197,7 +185,6 @@ export function HtmlPanel({ headerActions }: PanelHeaderProps = {}) {
   const scopeDirty = scopeDraft !== undefined && scopeDraft.text !== document?.html
   // A dirty scope keeps its buffer (caret, history) through every store
   // change, including the remote ones the stale banner reports.
-  const { revision, runOwnWrite } = useDocumentSync(syncSource, { holdRemounts: scopeDirty })
   const [applied, setApplied] = useState<AppliedReport | null>(null)
   const [pending, setPending] = useState<PendingApply | null>(null)
   // The element under the cursor, for the breadcrumbs — remembered with its
@@ -292,7 +279,7 @@ export function HtmlPanel({ headerActions }: PanelHeaderProps = {}) {
   const REFUSED = 'the store refused the change (the element may be gone, or you are offline)'
 
   const commit = (result: ProjectionImportResult): boolean => {
-    const ok = runOwnWrite(() => applyProjectionImport(result))
+    const ok = applyProjectionImport(result)
     if (!ok) return false
     dropDraft(docKey)
     const fresh = deriveHtmlPanelDocument(selectSelectionScope(useEditorStore.getState()))
@@ -555,13 +542,13 @@ export function HtmlPanel({ headerActions }: PanelHeaderProps = {}) {
         <Suspense fallback={<CodeEditorSkeleton />}>
           <CodeMirrorEditor
             ref={editorRef}
-            docKey={`${docKey}#${revision}`}
+            docKey={docKey}
             value={draft?.text ?? html}
             language="html"
             changeDelayMs={HTML_PANEL_APPLY_DELAY_MS}
             lintSyntax
             lintGutter={false}
-            syncValue
+            syncValue={syncProjectionFormatting}
             foldUidAttributes
             readOnly={readOnly}
             completions={completions}

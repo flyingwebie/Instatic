@@ -197,10 +197,8 @@ export const selectActivePage = (s: EditorStore): Page | null => {
 
 /** Select whether the docked right sidebar is currently taking layout space. */
 export const selectRightSidebarExpanded = (s: EditorStore) =>
-  // God Mode replaces the docked properties sidebar with the Code Dock.
-  // Floating properties (the escape hatch) is unaffected by this selector.
-  !s.godModeActive &&
-  s.propertiesPanelMode === 'docked' &&
+  // A selected loop keeps its module-only inspector docked beside the canvas.
+  (selectCodeDockLoopNode(s) !== null || (!s.godModeActive && s.propertiesPanelMode === 'docked')) &&
   !s.propertiesPanel.collapsed &&
   Boolean(
     s.selectedNodeId ||
@@ -267,6 +265,13 @@ export const selectActiveCanvasPage = (s: EditorStore): Page | null => {
 export const selectSelectedNode = (s: EditorStore) => {
   if (!s.selectedNodeId) return null
   return selectActiveCanvasPage(s)?.nodes[s.selectedNodeId] ?? null
+}
+
+/** Editable single loop selection while the Code Dock is active. */
+export const selectCodeDockLoopNode = (s: EditorStore) => {
+  if (!s.godModeActive || s.selectedNodeIds.length > 1 || s.selectedSelectorClassId || s.selectedSelectorClassIds.length > 0) return null
+  const node = selectSelectedNode(s)
+  return node?.moduleId === 'base.loop' ? node : null
 }
 
 // ---------------------------------------------------------------------------

@@ -27,7 +27,7 @@ import {
   type CSSProperties,
   type ReactNode,
 } from 'react'
-import { useEditorStore } from '@site/store/store'
+import { selectCodeDockLoopNode, useEditorStore } from '@site/store/store'
 import {
   clampCodeDockHeight,
   CODE_DOCK_PANEL_IDS,
@@ -111,6 +111,7 @@ export function CodeDock({ runtimeValidation }: CodeDockProps) {
   const setCodeDockColumnWeights = useEditorStore((s) => s.setCodeDockColumnWeights)
   const setPropertiesPanelMode = useEditorStore((s) => s.setPropertiesPanelMode)
   const setPropertiesPanel = useEditorStore((s) => s.setPropertiesPanel)
+  const setFocusedPanel = useEditorStore((s) => s.setFocusedPanel)
 
   const panelOrder = useEditorStore((s) => s.codeDockPanelOrder)
   const setPanelOrder = useEditorStore((s) => s.setCodeDockPanelOrder)
@@ -157,12 +158,12 @@ export function CodeDock({ runtimeValidation }: CodeDockProps) {
     visiblePanels.length > 1 &&
     dockWidth < visiblePanels.length * MIN_COLUMN_WIDTH
 
-  const openFloatingProperties = () => {
-    // Escape hatch: module-specific controls (image pickers, form settings)
-    // have no code representation, so Properties stays reachable as a
-    // floating window while the docked sidebar is suppressed.
-    setPropertiesPanelMode('floating')
+  const openProperties = () => {
+    // Loops use the fixed inspector; other module controls stay available
+    // through the floating Properties panel.
+    if (!selectCodeDockLoopNode(useEditorStore.getState())) setPropertiesPanelMode('floating')
     setPropertiesPanel({ collapsed: false })
+    setFocusedPanel('properties')
   }
 
   // ── Height drag ──────────────────────────────────────────────────────────
@@ -329,7 +330,7 @@ export function CodeDock({ runtimeValidation }: CodeDockProps) {
             iconOnly
             aria-label="Properties Panel"
             tooltip="Properties Panel"
-            onClick={openFloatingProperties}
+            onClick={openProperties}
             data-testid="code-dock-open-properties"
           >
             <SlidersHorizontalIcon size={14} />
