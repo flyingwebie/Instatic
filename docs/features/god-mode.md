@@ -258,8 +258,12 @@ real class or ambient rule; a new `.class` is **not** auto-assigned to the
 selection (assignment stays explicit — the HTML panel's `class` attribute).
 
 **CSS tools** — `css/CssToolbar.tsx` opens compact category popups with
-icon-only preset and property controls. Accessible names, tooltips and
-pressed states identify each option. Changing categories does not edit the
+icon-only preset and property controls. The reorder icon at the end of the row
+opens an icon palette: drag a control into place, select it and use the move
+arrows, or use Left/Right/Home/End on a focused icon. Reset restores the default
+order. Changes save automatically in browser-local preferences across sessions
+and synchronize between open tabs; they do not modify site CSS.
+Accessible names, tooltips and pressed states identify each option. Changing categories does not edit the
 document. Choosing a preset keeps the popup open for successive edits;
 selector navigation remains searchable text so authored selectors are readable.
 

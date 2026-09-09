@@ -1,4 +1,5 @@
 import { useLayoutEffect, useRef, useState, type KeyboardEvent } from 'react'
+import { DragAndDropSolidIcon } from 'pixel-art-icons/icons/drag-and-drop-solid'
 import { Button } from '@ui/components/Button'
 import { ContextMenu, ContextMenuItem, MenuSearchHeader } from '@ui/components/ContextMenu'
 import { Separator } from '@ui/components/Separator'
@@ -14,6 +15,8 @@ import {
 } from './cssToolbarCatalog'
 import { CSS_TOOLBAR_ICONS } from './cssToolbarIcons'
 import { CssPropertyEditor } from './CssPropertyEditor'
+import { useCssToolbarOrder } from './cssToolbarOrder'
+import { CssToolbarOrderEditor } from './CssToolbarOrderEditor'
 import styles from './CssToolbar.module.css'
 
 function menuKeys(event: KeyboardEvent<HTMLDivElement>) {
@@ -133,12 +136,13 @@ export function CssToolbar({
   run: (command: CssToolbarCommand) => void
   conditions: CssPreset[]
 }) {
-  const [category, setCategory] = useState<CssTool['id'] | 'conditions' | null>(null)
+  const [category, setCategory] = useState<CssTool['id'] | 'conditions' | 'order' | null>(null)
+  const { items, saveOrder } = useCssToolbarOrder()
   const [editing, setEditing] = useState<CssPropertyControl | null>(null)
   const anchorRef = useRef<HTMLButtonElement>(null)
   const categoriesRef = useRef<HTMLDivElement>(null)
   const popupRef = useRef<HTMLDivElement>(null)
-  const restoreFocusRef = useRef<CssTool['id'] | 'conditions' | null>(null)
+  const restoreFocusRef = useRef<CssTool['id'] | 'conditions' | 'order' | null>(null)
   // Expanded buttons change their tooltip wrapper; restore focus after that DOM update.
   useLayoutEffect(() => {
     if (category !== null) {
@@ -255,59 +259,69 @@ export function CssToolbar({
       </Button>
     )
   }
-  const selectCategory = (next: CssTool['id'] | 'conditions') => {
+  const selectCategory = (next: CssTool['id'] | 'conditions' | 'order') => {
     if (category === next) restoreFocusRef.current = next
     setCategory(category === next ? null : next)
     setEditing(null)
   }
   return (
     <div className={styles.root} data-testid="css-toolbar">
-      <div ref={categoriesRef} className={styles.controls} role="group" aria-label="CSS categories">
-        {CSS_TOOLS.map((item) => {
-          const Icon = CSS_TOOLBAR_ICONS[item.id]
-          return (
-            <Button
-              key={item.id}
-              ref={category === item.id ? anchorRef : undefined}
-              data-css-category={item.id}
-              variant="ghost"
-              size="xs"
-              iconOnly
-              aria-label={item.label}
-              tooltip={item.label}
-              aria-haspopup="dialog"
-              aria-expanded={category === item.id}
-              pressed={category === item.id}
-              onClick={() => selectCategory(item.id)}
-            >
-              <Icon size={16} />
-            </Button>
-          )
-        })}
-        <Button
-          variant="ghost"
-          size="xs"
-          iconOnly
-          ref={category === 'conditions' ? anchorRef : undefined}
-          data-css-category="conditions"
-          aria-label="Conditional rules"
-          tooltip="Conditional rules"
-          aria-haspopup="dialog"
-          aria-expanded={category === 'conditions'}
-          pressed={category === 'conditions'}
-          onClick={() => selectCategory('conditions')}
-        >
-          <CSS_TOOLBAR_ICONS.code size={16} />
-        </Button>
-        <Separator orientation="vertical" spacing="compact" />
-        <RuleNavigator
-          context={context}
-          run={run}
-          onOpen={() => {
-            setCategory(null)
-            setEditing(null)
-          }}
-        />
+      <div ref={categoriesRef} className={styles.toolbarRow}>
+        <div className={styles.controls} role="group" aria-label="CSS categories">
+          {items.map((item) => {
+            if (item.id === 'navigator') {
+              return (
+                <RuleNavigator
+                  key={item.id}
+                  context={context}
+                  run={run}
+                  onOpen={() => {
+                    setCategory(null)
+                    setEditing(null)
+                  }}
+                />
+              )
+            }
+            const id = item.id
+            const Icon = CSS_TOOLBAR_ICONS[item.icon]
+            return (
+              <Button
+                key={id}
+                ref={category === id ? anchorRef : undefined}
+                data-css-category={id}
+                variant="ghost"
+                size="xs"
+                iconOnly
+                aria-label={item.label}
+                tooltip={item.label}
+                aria-haspopup="dialog"
+                aria-expanded={category === id}
+                pressed={category === id}
+                onClick={() => selectCategory(id)}
+              >
+                <Icon size={16} />
+              </Button>
+            )
+          })}
+        </div>
+        <div className={styles.orderTrigger}>
+          <Separator orientation="vertical" spacing="compact" />
+          <Button
+            variant="ghost"
+            size="xs"
+            iconOnly
+            ref={category === 'order' ? anchorRef : undefined}
+            data-css-category="order"
+            aria-label="Reorder CSS toolbar"
+            tooltip="Reorder CSS toolbar"
+            aria-haspopup="dialog"
+            aria-expanded={category === 'order'}
+            pressed={category === 'order'}
+            onClick={() => selectCategory('order')}
+          >
+            <DragAndDropSolidIcon size={16} />
+          </Button>
+        </div>
       </div>
       {category && (
         <ContextMenu
@@ -316,7 +330,9 @@ export function CssToolbar({
           triggerRef={categoriesRef}
           ref={popupRef}
           tabIndex={-1}
-          ariaLabel={tool?.label ?? 'Conditional rules'}
+          ariaLabel={
+            category === 'order' ? 'Reorder CSS toolbar' : (tool?.label ?? 'Conditional rules')
+          }
           role="dialog"
           width={280}
           maxHeight={440}
@@ -327,67 +343,73 @@ export function CssToolbar({
             setEditing(null)
           }}
         >
-          <div
-            className={styles.settings}
-            role="group"
-            aria-label={`${tool?.label ?? 'Conditional rules'} settings`}
-            data-testid="css-toolbar-settings"
-          >
-            {category === 'type' &&
-              toggles.map(({ label, Icon, property, value, off, active }) => (
-                <Button
-                  key={label}
-                  variant="ghost"
-                  size="xs"
-                  iconOnly
-                  aria-label={label}
-                  tooltip={label}
-                  pressed={!!active}
-                  disabled={!context.canEdit}
-                  onClick={(event) => {
-                    run({
-                      kind: 'declarations',
-                      declarations: { [property]: active ? off : value },
-                    })
-                    event.currentTarget.focus()
-                  }}
-                >
-                  <Icon size={16} />
-                </Button>
-              ))}
-            {presets.map(renderPreset)}
-            {tool &&
-              propertyControl({
-                label: 'Custom CSS property',
-                custom: true,
-                property: tool.property,
-                icon: 'settings',
-                ...(tool.id === 'color' ? { kind: 'color' } : {}),
-              })}
-          </div>
-          {category === 'layout' && isGrid && (
+          {category === 'order' ? (
+            <CssToolbarOrderEditor items={items} saveOrder={saveOrder} />
+          ) : (
             <>
-              <Separator spacing="compact" />
-              <div role="group" aria-label="Grid settings">
-                <div className={styles.settings}>{CSS_GRID_PRESETS.map(renderPreset)}</div>
-                <div className={styles.settings}>{CSS_GRID_CONTROLS.map(propertyControl)}</div>
+              <div
+                className={styles.settings}
+                role="group"
+                aria-label={`${tool?.label ?? 'Conditional rules'} settings`}
+                data-testid="css-toolbar-settings"
+              >
+                {category === 'type' &&
+                  toggles.map(({ label, Icon, property, value, off, active }) => (
+                    <Button
+                      key={label}
+                      variant="ghost"
+                      size="xs"
+                      iconOnly
+                      aria-label={label}
+                      tooltip={label}
+                      pressed={!!active}
+                      disabled={!context.canEdit}
+                      onClick={(event) => {
+                        run({
+                          kind: 'declarations',
+                          declarations: { [property]: active ? off : value },
+                        })
+                        event.currentTarget.focus()
+                      }}
+                    >
+                      <Icon size={16} />
+                    </Button>
+                  ))}
+                {presets.map(renderPreset)}
+                {tool &&
+                  propertyControl({
+                    label: 'Custom CSS property',
+                    custom: true,
+                    property: tool.property,
+                    icon: 'settings',
+                    ...(tool.id === 'color' ? { kind: 'color' } : {}),
+                  })}
               </div>
-            </>
-          )}
-          {editing && (
-            <>
-              <Separator spacing="compact" />
-              <CssPropertyEditor
-                key={editing.property}
-                control={editing}
-                context={context}
-                custom={!!editing.custom}
-                run={(command) => {
-                  run(command)
-                  setEditing(null)
-                  anchorRef.current?.focus()
-                }}
-              />
+              {category === 'layout' && isGrid && (
+                <>
+                  <Separator spacing="compact" />
+                  <div role="group" aria-label="Grid settings">
+                    <div className={styles.settings}>{CSS_GRID_PRESETS.map(renderPreset)}</div>
+                    <div className={styles.settings}>{CSS_GRID_CONTROLS.map(propertyControl)}</div>
+                  </div>
+                </>
+              )}
+              {editing && (
+                <>
+                  <Separator spacing="compact" />
+                  <CssPropertyEditor
+                    key={editing.property}
+                    control={editing}
+                    context={context}
+                    custom={!!editing.custom}
+                    run={(command) => {
+                      run(command)
+                      setEditing(null)
+                      anchorRef.current?.focus()
+                    }}
+                  />
+                </>
+              )}
             </>
           )}
         </ContextMenu>
