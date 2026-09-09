@@ -7,6 +7,9 @@
 }
 
 .controls {
+    display: grid;
+    align-content: start;
+    gap: var(--space-s);
     flex: 1;
     min-height: 0;
     overflow-y: auto;
