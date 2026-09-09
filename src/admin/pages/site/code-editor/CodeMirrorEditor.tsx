@@ -28,6 +28,7 @@
  * @see Constraint #402 — no inline styles
  */
 
+import { syncProjectionFormatting } from './syncProjectionFormatting'
 import { useRef, useEffect, useEffectEvent, useCallback, useImperativeHandle, type Ref } from 'react'
 import { EditorView, basicSetup } from 'codemirror'
 import { Annotation, EditorState, Prec } from '@codemirror/state'
@@ -187,10 +188,10 @@ interface CodeMirrorEditorProps {
    * the buffer is patched IN PLACE with the minimal line edits (caret,
    * history and folds survive) instead of ignoring it. Skipped while an
    * edit is still pending, which would be overwritten by the flush anyway.
-   * A function can reconcile the projection with the current source layout.
+   * `html-projection` retains source formatting while syncing HTML values.
    * Such patches never re-enter `onChange`.
    */
-  syncValue?: boolean | ((current: string, projected: string) => string)
+  syncValue?: boolean | 'html-projection'
   /** Show the lint marker gutter column (diagnostics stay inline without it). */
   lintGutter?: boolean
   /** Formatting (Shift-Alt-F or `format()`) failed — e.g. the document does not parse. */
@@ -676,7 +677,7 @@ export default function CodeMirrorEditor({
     if (!view || pendingChangeRef.current !== null) return
     const current = view.state.doc.toString()
     if (current === value) return
-    const next = typeof syncValue === 'function' ? syncValue(current, value) : value
+    const next = syncValue === 'html-projection' ? syncProjectionFormatting(current, value) : value
     if (current !== next) {
       view.dispatch({ changes: documentChanges(current, next), annotations: [valueSync.of(true)] })
     }

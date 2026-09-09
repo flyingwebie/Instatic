@@ -1,6 +1,6 @@
 import { parser } from '@lezer/html'
 import type { SyntaxNode } from '@lezer/common'
-import { applyDocumentChanges, type DocumentChange } from '@site/code-editor'
+import { applyDocumentChanges, type DocumentChange } from './documentDiff'
 
 interface Tag {
   node: SyntaxNode

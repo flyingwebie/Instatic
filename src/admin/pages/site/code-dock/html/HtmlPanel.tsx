@@ -61,7 +61,6 @@ import { deriveHtmlCompletionCatalog, useDataMeta } from '../completions'
 import { PanelHeader, type PanelHeaderProps } from '../PanelHeader'
 import { CodeEditorSkeleton } from '@site/code-editor'
 import { FormatButton } from '../FormatButton'
-import { syncProjectionFormatting } from './syncProjectionFormatting'
 import { deriveHtmlPanelDocument, type HtmlPanelDocument } from './htmlPanelDocument'
 import { summarizeDestructiveApply, type DestructiveRemoval } from './applyGuardrails'
 import { HtmlApplyConfirmDialog } from './HtmlApplyConfirmDialog'
@@ -548,7 +547,7 @@ export function HtmlPanel({ headerActions }: PanelHeaderProps = {}) {
             changeDelayMs={HTML_PANEL_APPLY_DELAY_MS}
             lintSyntax
             lintGutter={false}
-            syncValue={syncProjectionFormatting}
+            syncValue="html-projection"
             foldUidAttributes
             readOnly={readOnly}
             completions={completions}

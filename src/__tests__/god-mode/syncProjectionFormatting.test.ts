@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'bun:test'
-import { syncProjectionFormatting } from '@site/code-dock/html/syncProjectionFormatting'
+import { syncProjectionFormatting } from '@site/code-editor/syncProjectionFormatting'
 
 describe('projection formatting synchronization', () => {
   it('changes loop attributes without collapsing nested markup or authored spacing', () => {
