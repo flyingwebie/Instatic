@@ -4,6 +4,22 @@ All notable changes to Instatic will be documented here.
 
 This project is pre-1.0. Breaking changes may appear in minor or patch releases until a stable release line exists.
 
+## 0.0.20 - 2026-09-09
+
+### Editor
+
+- Added icon palettes and tooltips to the CSS panel for layout, spacing, typography, sizing, positioning, effects, and conditional rules, with sensible CSS presets and rule navigation.
+- Added display-grid presets, including two- and three-column grids, plus editable columns, rows, and gaps.
+- Added customizable CSS toolbar and HTML/CSS/JS panel ordering, retained across sessions.
+- Compacted code-panel headers with Format and Properties Panel icons. Ordinary HTML edits apply live; only destructive or stale edits require review.
+- Improved code-dock loading with an immediately available shell, individual panel loading placeholders, and parallel editor preloading.
+
+### Plugins and development
+
+- Added permission-gated managed-media upserts for remote URLs and packaged plugin assets, using the host media pipeline and stable plugin-owned identities.
+- Install dependencies before development servers start and repair two browser test scenarios affected by earlier security fixes.
+- Pin install-bundle images to the release version and publishing repository owner so fork releases install their own image.
+
 ## 0.0.19 - 2026-09-03
 
 ### Editor, import, and publishing
