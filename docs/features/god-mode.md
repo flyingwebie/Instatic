@@ -257,6 +257,27 @@ rail; there is no silent forking. A new selector typed in the panel creates a
 real class or ambient rule; a new `.class` is **not** auto-assigned to the
 selection (assignment stays explicit — the HTML panel's `class` attribute).
 
+**CSS tools** — `css/CssToolbar.tsx` groups text controls, colors/effects,
+spacing/dimensions, layout/position, conditions, and rule navigation. Presets
+live in `css/cssToolbarCatalog.ts`; property menus also accept custom CSS
+property/value pairs and colors. Bold, italic, underline and strikethrough
+reflect the current block's authored declarations. The wrapping toolbar fits
+narrow dock columns as well as the expanded panel.
+
+Actions target the innermost CSS block at the cursor. The target selector is
+shown below the tools; the searchable navigator uses the current editor
+buffer, so offsets follow unapplied edits. `code-editor/cssToolbarCommands.ts`
+uses the CSS syntax tree to replace direct declarations without touching
+nested rules or neighbouring selectors, and dispatches through the ordinary
+editor change path (live apply, draft handling, collaboration and undo).
+Malformed documents, read-only rules and locked framework ranges reject
+mutations. Conditional presets wrap the current selector in `@media`,
+`@container` or `@supports`; media choices include the site's breakpoints.
+Inline `element` rules cannot be wrapped. Container queries require a sized
+ancestor container (`container-type: inline-size`, available in Layout).
+Tests: `src/__tests__/code-editor/cssToolbarCommands.test.ts` and
+`src/__tests__/god-mode/cssPanel.test.tsx`.
+
 **Editor** — `CodeMirrorEditor` gained two opt-in props for this panel:
 `lockedRanges` (`code-editor/lockedRegions.ts`: read-only ranges that follow
 edits above them, folded on mount, `.cm-lockedLine` styling) and `lintSyntax`

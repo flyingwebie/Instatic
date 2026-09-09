@@ -93,6 +93,7 @@ const LAZY_CHUNK_HELPERS = [
   'syntaxNode.ts',
   'uidInspector.ts',
   'cssVarShorthand.ts',
+  'cssToolbarCommands.ts',
   'documentDiff.ts',
   'formatDocument.ts',
 ]

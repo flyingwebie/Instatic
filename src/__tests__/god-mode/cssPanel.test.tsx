@@ -4,7 +4,7 @@
  * and new-selector creation without auto-assignment.
  */
 import { afterEach, beforeEach, describe, expect, it } from 'bun:test'
-import { act, cleanup, render, screen, waitFor } from '@testing-library/react'
+import { act, cleanup, fireEvent, render, screen, waitFor } from '@testing-library/react'
 import { EditorView } from '@codemirror/view'
 import { useEditorStore } from '@site/store/store'
 import { CssPanel, CSS_PANEL_APPLY_DELAY_MS } from '@site/code-dock/css'
@@ -60,6 +60,35 @@ beforeEach(setup)
 afterEach(cleanup)
 
 describe('CssPanel', () => {
+  it('applies a toolbar layout preset live and restores it through canvas undo', async () => {
+    const { cardId } = setup()
+    const view = await mountPanel()
+    act(() => view.dispatch({ selection: { anchor: view.state.doc.toString().indexOf('color: red') } }))
+    fireEvent.click(screen.getByRole('button', { name: 'Layout', exact: true }))
+    fireEvent.click(screen.getByRole('menuitem', { name: 'Horizontal flex' }))
+    await act(afterDebounce)
+    expect(state().site!.styleRules[cardId].styles).toMatchObject({ display: 'flex', flexDirection: 'row', gap: '1rem' })
+    expect(editorView()).toBe(view)
+    act(() => state().undo())
+    await waitFor(() => expect(editorView().state.doc.toString()).not.toContain('display: flex'))
+    expect(state().site!.styleRules[cardId].styles).toEqual({ color: 'red' })
+  })
+
+  it('navigates by selector and combines decoration toggles without losing underline', async () => {
+    const { cardId } = setup()
+    await mountPanel()
+    fireEvent.click(screen.getByRole('button', { name: 'Navigate CSS rules' }))
+    fireEvent.click(screen.getByRole('menuitem', { name: '.card', exact: true }))
+    fireEvent.click(screen.getByRole('button', { name: 'Underline', exact: true }))
+    fireEvent.click(screen.getByRole('button', { name: 'Strikethrough', exact: true }))
+    expect(screen.getByRole('button', { name: 'Underline', exact: true }).getAttribute('aria-pressed')).toBe('true')
+    await act(afterDebounce)
+    expect(state().site!.styleRules[cardId].styles.textDecorationLine).toBe('underline line-through')
+    fireEvent.click(screen.getByRole('button', { name: 'Strikethrough', exact: true }))
+    await act(afterDebounce)
+    expect(state().site!.styleRules[cardId].styles.textDecorationLine).toBe('underline')
+  })
+
   it('projects the selection and applies a typed change live, as one undo step the canvas can undo', async () => {
     const { cardId } = setup()
     const view = await mountPanel()

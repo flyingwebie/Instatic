@@ -1,0 +1,72 @@
+.root {
+  flex: none;
+  min-width: 0;
+  border-bottom: 1px solid var(--border-subtle);
+  background: var(--bg-surface-2);
+}
+
+.controls {
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: var(--space-4xs);
+  padding: var(--space-3xs) var(--space-xs);
+}
+
+.group {
+  display: flex;
+  align-items: center;
+  flex: none;
+  gap: var(--space-4xs);
+}
+
+.target {
+  padding: 0 var(--space-s) var(--space-3xs);
+  color: var(--text-muted);
+  font-size: var(--text-2xs);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.heading {
+  padding: var(--space-xs);
+  font-size: var(--text-2xs);
+  color: var(--text-muted);
+}
+
+.form {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-3xs);
+  padding: var(--space-xs);
+  font-size: var(--text-2xs);
+  color: var(--text-muted);
+}
+
+.valueRow {
+  display: flex;
+  align-items: center;
+  gap: var(--space-xs);
+}
+
+.valueRow > :last-child {
+  min-width: 0;
+  flex: 1;
+}
+
+.error {
+  color: var(--danger);
+}
+
+.ruleLabel {
+  flex: 1;
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.readOnly {
+  color: var(--text-muted);
+  font-size: var(--text-2xs);
+}

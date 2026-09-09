@@ -28,6 +28,9 @@ import { cn } from '@ui/cn'
 import { useDocumentSync, type DocumentSyncSource } from '../useDocumentSync'
 import { deriveCssCompletionCatalog } from '../completions'
 import { FormatButton } from '../FormatButton'
+import { CssToolbar } from './CssToolbar'
+import type { CssToolbarCommand, CssToolbarContext } from '@site/code-editor/cssToolbarTypes'
+import type { CssPreset } from './cssToolbarCatalog'
 import { deriveCssPanelDocument, type CssPanelCanvas, type CssPanelDocument } from './cssPanelDocument'
 import { selectSelectionScope, selectionScopeEqual, type SelectionScopeInputs } from '../selectionScope'
 import styles from '../EditorColumn.module.css'
@@ -83,6 +86,14 @@ export function CssPanel() {
   const { revision, runOwnWrite } = useDocumentSync(syncSource)
   const editorRef = useRef<CodeMirrorEditorHandle | null>(null)
 
+  const [toolbarContext, setToolbarContext] = useState<CssToolbarContext>({
+    rules: [], activeRule: null, declarations: {}, canEdit: false, canWrap: false,
+  })
+  const runCssCommand = (command: CssToolbarCommand) => {
+    const result = editorRef.current?.runCssCommand(command)
+    if (result && !result.ok) pushToast({ kind: 'error', title: 'Could not edit CSS', body: result.error })
+  }
+
   const docKey = document ? `${document.docKey}#${revision}` : null
   const stored = document ? storedDrafts[document.docKey] : undefined
   const draft = stored?.kind === 'css' ? stored : undefined
@@ -118,6 +129,11 @@ export function CssPanel() {
 
   const completions = deriveCssCompletionCatalog(inputs.site)
 
+  const conditions: CssPreset[] = inputs.site.breakpoints.filter((bp) => bp.mediaQuery).map((bp) => ({
+    label: bp.label,
+    command: { kind: 'wrap', condition: `@media ${bp.mediaQuery}` },
+  }))
+
   return (
     <div className={styles.panel} data-testid="css-panel">
       <div className={styles.toolbar}>
@@ -137,6 +153,7 @@ export function CssPanel() {
           <FormatButton onFormat={() => void editorRef.current?.format()} testId="css-panel-format" />
         </span>
       </div>
+      <CssToolbar key={docKey} context={toolbarContext} run={runCssCommand} conditions={conditions} />
       <div className={styles.editor}>
         <Suspense fallback={<div className={styles.loading}>Loading editor</div>}>
           <CodeMirrorEditor
@@ -150,6 +167,7 @@ export function CssPanel() {
             lockedRanges={document.projection.blocks.filter((block) => block.locked)}
             completions={completions}
             onChange={onChange}
+            onCssContextChange={setToolbarContext}
             onFormatError={(message) => pushToast({ kind: 'error', title: 'Could not format the CSS', body: message })}
           />
         </Suspense>

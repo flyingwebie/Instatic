@@ -62,6 +62,8 @@ import { syntaxDiagnostics } from './syntaxDiagnostics'
 import { contextCompletions } from './contextCompletions'
 import { uidInspector } from './uidInspector'
 import { cssVarShorthand } from './cssVarShorthand'
+import { cssToolbarContext, runCssToolbarCommand } from './cssToolbarCommands'
+import type { CssToolbarCommand, CssToolbarContext, CssToolbarResult } from './cssToolbarTypes'
 import { documentChanges } from './documentDiff'
 import { formatDocument, isFormattableLanguage, type FormatResult } from './formatDocument'
 import type { EditorCompletionCatalog } from './completionCatalog'
@@ -192,12 +194,15 @@ interface CodeMirrorEditorProps {
   lintGutter?: boolean
   /** Formatting (Shift-Alt-F or `format()`) failed — e.g. the document does not parse. */
   onFormatError?: (message: string) => void
+  /** Live cursor context for the CSS command toolbar. */
+  onCssContextChange?: (context: CssToolbarContext) => void
   ref?: Ref<CodeMirrorEditorHandle>
 }
 
 export interface CodeMirrorEditorHandle {
   /** Format the document with Prettier; resolves once the buffer is updated. */
   format: () => Promise<FormatResult>
+  runCssCommand: (command: CssToolbarCommand) => CssToolbarResult
 }
 
 /** Marks a transaction that brings the buffer up to date with `value` — not an author edit. */
@@ -374,6 +379,7 @@ export default function CodeMirrorEditor({
   syncValue = false,
   lintGutter: showLintGutter = true,
   onFormatError,
+  onCssContextChange,
   ref,
 }: CodeMirrorEditorProps) {
   const containerRef = useRef<HTMLDivElement | null>(null)
@@ -436,7 +442,16 @@ export default function CodeMirrorEditor({
   useEffect(() => {
     formatRef.current = format
   })
-  useImperativeHandle(ref, () => ({ format: () => formatRef.current() }), [])
+  useImperativeHandle(ref, () => ({
+    format: () => formatRef.current(),
+    runCssCommand: (command) => {
+      const view = viewRef.current
+      if (!view || language !== 'css') return { ok: false, error: 'No CSS document is open.' }
+      return runCssToolbarCommand(view, command)
+    },
+  }), [language])
+  const cssContextHandlerRef = useRef(onCssContextChange)
+  useEffect(() => { cssContextHandlerRef.current = onCssContextChange }, [onCssContextChange])
 
   // useCallback kept: stable identity for the [flush] useEffect dep array (exhaustive-deps).
   // Flush pending content to the store immediately (called on doc switch).
@@ -513,6 +528,9 @@ export default function CodeMirrorEditor({
           editorTooltipBoundary,
           ...(showLintGutter ? [lintGutter()] : []),
           EditorView.updateListener.of((update) => {
+            if (language === 'css' && (update.docChanged || update.selectionSet)) {
+              cssContextHandlerRef.current?.(cssToolbarContext(update.state))
+            }
             if (!update.docChanged) return
             const synced = update.transactions.every((tr) => tr.annotation(valueSync) === true)
             const content = update.state.doc.toString()
@@ -613,6 +631,7 @@ export default function CodeMirrorEditor({
     const mounted = mountView(container)
     const view = mounted.view
     viewRef.current = view
+    if (cssContextHandlerRef.current) cssContextHandlerRef.current(cssToolbarContext(view.state))
     refreshTypeScriptDiagnosticsRef.current?.()
 
     return () => {
