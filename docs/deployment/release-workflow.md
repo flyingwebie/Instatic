@@ -89,6 +89,8 @@ The C++ DLL is loaded via `kernel32.LoadLibraryW` rather than `bun:ffi`'s
 `dlopen`: it exports only C++-mangled names, which cannot appear in the C
 wrapper `bun:ffi` generates per requested symbol.
 
+The install bundle pins Compose defaults, environment examples, deployment documentation, and Render blueprints to the tagged image. In GitHub Actions, the image owner comes from `GITHUB_REPOSITORY_OWNER`, matching the image publishing job; local builds default to `corebunch`. Set that variable explicitly when building a fork release locally.
+
 Release notes should link to:
 
 - [railway.md](railway.md)

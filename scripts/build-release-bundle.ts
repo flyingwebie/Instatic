@@ -1,6 +1,6 @@
 import { existsSync } from 'node:fs'
 import { spawnSync } from 'node:child_process'
-import { cp, mkdir, readFile, rm, writeFile } from 'node:fs/promises'
+import { mkdir, readFile, rm, writeFile } from 'node:fs/promises'
 import { dirname, join, resolve } from 'node:path'
 
 const ROOT = resolve(import.meta.dir, '..')
@@ -10,6 +10,9 @@ const version = Bun.argv[2] ?? process.env.INSTATIC_VERSION
 if (!version) {
   throw new Error('Usage: bun run release:bundle -- <semver>')
 }
+
+const imageOwner = (process.env.GITHUB_REPOSITORY_OWNER ?? 'corebunch').toLowerCase()
+const image = `ghcr.io/${imageOwner}/instatic:${version}`
 
 const bundleName = `instatic-${version}`
 const stagingDir = join(OUT_DIR, bundleName)
@@ -34,11 +37,6 @@ const bundleFiles = [
   'docs/deployment/render/postgres/render.yaml',
 ]
 
-const renderBlueprintFiles = [
-  'docs/deployment/render/sqlite/render.yaml',
-  'docs/deployment/render/postgres/render.yaml',
-]
-
 async function copyIntoBundle(path: string): Promise<void> {
   const source = join(ROOT, path)
   if (!existsSync(source)) {
@@ -46,18 +44,9 @@ async function copyIntoBundle(path: string): Promise<void> {
   }
   const destination = join(stagingDir, path)
   await mkdir(dirname(destination), { recursive: true })
-  await cp(source, destination, { recursive: true })
-}
-
-async function pinRenderBlueprintImage(path: string): Promise<void> {
-  const destination = join(stagingDir, path)
-  const contents = await readFile(destination, 'utf-8')
-  const image = `ghcr.io/corebunch/instatic:${version}`
-  const updated = contents.replace(/ghcr\.io\/corebunch\/instatic:[^\s]+/g, image)
-  if (updated === contents) {
-    throw new Error(`Render Blueprint image tag was not found: ${path}`)
-  }
-  await writeFile(destination, updated, 'utf-8')
+  const contents = await readFile(source, 'utf-8')
+  const pinned = contents.replace(/ghcr\.io\/corebunch\/instatic:(?:latest|\d+\.\d+\.\d+)/g, image)
+  await writeFile(destination, pinned, 'utf-8')
 }
 
 await rm(stagingDir, { recursive: true, force: true })
@@ -66,10 +55,6 @@ await mkdir(stagingDir, { recursive: true })
 
 for (const file of bundleFiles) {
   await copyIntoBundle(file)
-}
-
-for (const file of renderBlueprintFiles) {
-  await pinRenderBlueprintImage(file)
 }
 
 await writeFile(
@@ -81,7 +66,7 @@ This bundle contains the production Compose files and deployment docs for Instat
 ## SQLite, single-container install
 
 \`\`\`sh
-INSTATIC_IMAGE=ghcr.io/corebunch/instatic:${version} docker compose -f compose.prod.yml -f compose.sqlite.yml up -d
+INSTATIC_IMAGE=${image} docker compose -f compose.prod.yml -f compose.sqlite.yml up -d
 \`\`\`
 
 ## Postgres install
@@ -89,7 +74,7 @@ INSTATIC_IMAGE=ghcr.io/corebunch/instatic:${version} docker compose -f compose.p
 \`\`\`sh
 cp .env.production.example .env
 # Edit .env and set POSTGRES_PASSWORD and INSTATIC_SECRET_KEY.
-INSTATIC_IMAGE=ghcr.io/corebunch/instatic:${version} docker compose -f compose.prod.yml up -d
+INSTATIC_IMAGE=${image} docker compose -f compose.prod.yml up -d
 \`\`\`
 
 ## Coolify install
@@ -100,12 +85,12 @@ Create a Docker Compose resource pointing at one of:
 - \`docker-compose.coolify.sqlite.yml\` (single container, SQLite)
 
 Assign a domain to the \`instatic\` service and deploy; Coolify generates every secret and terminates TLS.
-Pin this release by setting \`INSTATIC_IMAGE=ghcr.io/corebunch/instatic:${version}\` in the Coolify UI.
+Pin this release by setting \`INSTATIC_IMAGE=${image}\` in the Coolify UI.
 Read \`docs/deployment/coolify.md\` first.
 
 ## Railway image-source install
 
-Use \`ghcr.io/corebunch/instatic:${version}\` as the Railway service source. Attach a volume at \`/app/storage\` and set:
+Use \`${image}\` as the Railway service source. Attach a volume at \`/app/storage\` and set:
 
 \`\`\`txt
 PORT=8080
@@ -126,7 +111,7 @@ Copy one of these files to a template repository as its root \`render.yaml\`:
 - \`docs/deployment/render/sqlite/render.yaml\`
 - \`docs/deployment/render/postgres/render.yaml\`
 
-These release-bundle copies are already pinned to \`ghcr.io/corebunch/instatic:${version}\`.
+These release-bundle copies are already pinned to \`${image}\`.
 Read \`docs/deployment/render.md\` before publishing a Deploy to Render button.
 `,
   'utf-8',

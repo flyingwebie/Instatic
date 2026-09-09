@@ -36,10 +36,10 @@ GHCR is the canonical image registry:
 
 ```sh
 docker pull ghcr.io/corebunch/instatic:latest
-docker pull ghcr.io/corebunch/instatic:0.0.19
+docker pull ghcr.io/corebunch/instatic:0.0.20
 ```
 
-The v0.0.19 published image is built for `linux/amd64`. Use it on Railway and x86_64 VPS/container hosts. ARM64 hosts should build from source for now, or wait for the native arm64 release job before pulling GHCR images directly.
+The v0.0.20 published image is built for `linux/amd64`. Use it on Railway and x86_64 VPS/container hosts. ARM64 hosts should build from source for now, or wait for the native arm64 release job before pulling GHCR images directly.
 
 ## Run With SQLite
 
@@ -92,7 +92,7 @@ Replace `instatic:local` with `ghcr.io/corebunch/instatic:<tag>` when deploying 
 Create an app service from Docker image source:
 
 ```txt
-ghcr.io/corebunch/instatic:0.0.19
+ghcr.io/corebunch/instatic:0.0.20
 ```
 
 Attach a Railway volume at `/app/storage`, set the health check path to `/health`, and set app variables:
