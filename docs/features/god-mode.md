@@ -50,13 +50,15 @@ outlives the entitlement (preference turned off, capability revoked), an effect 
 - **Right sidebar hidden** — `selectRightSidebarExpanded`
   (`src/admin/pages/site/store/store.ts`) returns false while `godModeActive`.
   Only the *docked* sidebar is suppressed: the Properties panel can still be
-  opened as a **floating window** (the Code Dock header's "Properties" button
-  switches `propertiesPanelMode` to floating), because module-specific controls
+  opened as a **floating window** (the Code Dock header's icon with the
+  "Properties Panel" tooltip switches `propertiesPanelMode` to floating), because module-specific controls
   (image pickers, form settings, loop source pickers) have no code
   representation.
 - **Code Dock shown** — `CodeDock` (`src/admin/pages/site/code-dock/`), mounted
-  lazily by `AdminCanvasEditorBody` below the editor row, spanning the full
-  shell width.
+  by `AdminCanvasEditorBody` below the editor row, spanning the full shell
+  width. Its controls render immediately; each editor loads independently
+  with a code skeleton. Hovering or focusing the God Mode toggle preloads
+  the panel modules and CodeMirror in parallel, also started when the dock mounts.
 
 ## Code Dock layout
 
@@ -75,12 +77,19 @@ outlives the entitlement (preference turned off, capability revoked), an effect 
   pointer-up, so the layout-persistence subscriber writes localStorage once per
   gesture. Keyboard: the handles are focusable `role="separator"` elements;
   arrow keys resize in discrete steps.
+- **Compact headers** — each panel has one row for its title, live status,
+  Format icon, and expand icon. Normal edits apply as you type; no permanent
+  Apply button is shown.
+- **Panel order** — the reorder icon next to Properties opens a palette for
+  dragging panels or using the move buttons and Left/Right/Home/End keys.
+  Both columns and narrow-mode tabs follow this order, including hidden panels;
+  widths stay attached to their panels. Reset restores HTML/CSS/JS.
 - **Tabbed fallback** — a ResizeObserver on the dock watches its width; when the
   visible columns can't all fit at their minimum width the dock switches to one
   editor with HTML/CSS/JS tabs (`codeDockActiveTab`), and back automatically.
 - **Persistence** — `godModeActive`, `codeDockHeight`, `codeDockPanels`,
-  `codeDockActiveTab`, and `codeDockColumnWeights` are projected into the
-  per-workspace layout storage (`siteEditorLayoutPersistence.ts` →
+  `codeDockActiveTab`, `codeDockPanelOrder`, and `codeDockColumnWeights` are
+  projected into the per-workspace layout storage (`siteEditorLayoutPersistence.ts` →
   `workspaceLayoutStorage.ts`, localStorage key `instatic-editor-layout-v2`) and
   restored (validated, clamped) at store hydration.
 - **Expand** — each column title carries an expand button that opens that
@@ -94,10 +103,10 @@ outlives the entitlement (preference turned off, capability revoked), an effect 
   buffer that does not parse yet are restored on remount; the JS panel and a
   parsing CSS buffer flush on unmount, so nothing is lost either way. Local
   dock state, not persisted.
-- **Bundle** — the dock is behind a `React.lazy` boundary; nothing God-Mode-
-  specific loads until the mode is activated. The CodeMirror panels stay
-  behind the same boundary, and Prettier (the Format action) behind another,
-  loaded the first time a document is formatted.
+- **Bundle** — the lightweight dock frame is available with the editor shell.
+  HTML/CSS/JS implementations and CodeMirror remain lazy; intent-based loading
+  starts them in parallel to avoid sequential downloads. Prettier loads on the
+  first Format action.
 
 ## HTML panel
 
@@ -143,7 +152,7 @@ projection of the current selection, applied back to the tree as you type.
   the canonical reflow. Nothing touches the tree while the document has
   syntax errors (`lintSyntax` diagnostics inline, count in the toolbar), and
   never in the read-only view. A change the guardrails below hold is
-  applied through the explicit **Apply** button or **⌘↩** (the editor's
+  applied through the contextual **Review edits** action or **⌘↩** (the editor's
   `onSubmit`) with a confirm dialog; the status names what is held.
 - **uid marks** — the projection's `uid="…"` attributes are for the import,
   not the author, so the editor shows each one as a clickable Instatic mark
@@ -176,7 +185,7 @@ projection of the current selection, applied back to the tree as you type.
     the draft's baseline — a co-editor, an MCP agent, or a canvas undo
     changed the projected subtree — shows a "Content changed remotely"
     banner (`html-panel-stale`), keeps the draft and buffer untouched, and
-    turns Apply into overwrite-with-confirm. The only exits are explicit:
+    requires review and overwrite confirmation. The only exits are explicit:
     confirm the overwrite (the draft is re-imported against the tree as it
     is at confirm time and wins), or **Discard draft**, which drops the draft
     and re-keys the buffer to the remote projection. Undoing a tree change
@@ -256,6 +265,38 @@ it site-wide by design** — the "used by N elements" annotation is the safety
 rail; there is no silent forking. A new selector typed in the panel creates a
 real class or ambient rule; a new `.class` is **not** auto-assigned to the
 selection (assignment stays explicit — the HTML panel's `class` attribute).
+
+**CSS tools** — `css/CssToolbar.tsx` opens compact category popups with
+icon-only preset and property controls. The reorder icon at the end of the row
+opens an icon palette: drag a control into place, select it and use the move
+arrows, or use Left/Right/Home/End on a focused icon. Reset restores the default
+order. Changes save automatically in browser-local preferences across sessions
+and synchronize between open tabs; they do not modify site CSS.
+Accessible names, tooltips and pressed states identify each option. Changing categories does not edit the
+document. Choosing a preset keeps the popup open for successive edits;
+selector navigation remains searchable text so authored selectors are readable.
+
+Presets live in `css/cssToolbarCatalog.ts`, with icons in
+`css/cssToolbarIcons.ts`. Selecting **Display grid** reveals Grid-1/2/3/4/6,
+a responsive grid preset, column/row count editors, and independent gap
+editors in the Layout popup. Column presets preserve existing row tracks and
+gaps. `css/CssPropertyEditor.tsx` edits track counts from 1 to 24 and custom
+CSS properties/values (including arbitrary track definitions). Property forms
+open inside the same popup. Typography includes bold, italic, underline and
+strikethrough toggles reflecting the current block's authored declarations.
+
+Actions target the innermost CSS block at the cursor. The searchable navigator
+uses the current editor buffer, so offsets follow unapplied edits. `code-editor/cssToolbarCommands.ts`
+uses the CSS syntax tree to replace direct declarations without touching
+nested rules or neighbouring selectors, and dispatches through the ordinary
+editor change path (live apply, draft handling, collaboration and undo).
+Malformed documents, read-only rules and locked framework ranges reject
+mutations. Conditional presets wrap the current selector in `@media`,
+`@container` or `@supports`; media choices include the site's breakpoints.
+Inline `element` rules cannot be wrapped. Container queries require a sized
+ancestor container (`container-type: inline-size`, available in Layout).
+Tests: `src/__tests__/code-editor/cssToolbarCommands.test.ts` and
+`src/__tests__/god-mode/cssPanel.test.tsx`.
 
 **Editor** — `CodeMirrorEditor` gained two opt-in props for this panel:
 `lockedRanges` (`code-editor/lockedRegions.ts`: read-only ranges that follow

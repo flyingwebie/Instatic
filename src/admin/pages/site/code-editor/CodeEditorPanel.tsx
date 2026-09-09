@@ -26,7 +26,8 @@
  * Editor chrome stays neutral; CodeMirror syntax uses GitHub Dark-style tokens.
  */
 
-import { Suspense, lazy, useEffect, useId, useRef, useState, type CSSProperties } from 'react'
+import { CodeEditorSkeleton } from './CodeEditorSkeleton'
+import { Suspense, lazy, useEffect, useId, useRef, useState } from 'react'
 import { ChevronUpIcon } from 'pixel-art-icons/icons/chevron-up'
 import { MinusIcon } from 'pixel-art-icons/icons/minus'
 import { useEditorStore } from '@site/store/store'
@@ -355,49 +356,5 @@ function RuntimeProblems({
         </div>
       )}
     </section>
-  )
-}
-
-// ---------------------------------------------------------------------------
-// CodeEditorSkeleton
-//
-// Suspense fallback rendered while the CodeMirror 6 chunk is downloading.
-// Mimics the editor's gutter + code-line layout so the panel transitions
-// smoothly from skeleton → real editor instead of popping from a blank
-// surface. CSS shimmer is achromatic and respects prefers-reduced-motion.
-// ---------------------------------------------------------------------------
-
-// Stable per-line widths so the skeleton doesn't visually thrash between
-// renders. 30–95% covers the natural spread of code-line widths. Passed in
-// as a CSS custom property — inline width:'%' would violate Constraint #402
-// (no inline style except dynamic CSS variables).
-type SkeletonLineStyle = CSSProperties & { '--skeleton-line-width': string }
-
-const SKELETON_LINE_WIDTHS = [
-  '72%', '54%', '88%', '40%', '66%', '78%', '48%', '92%', '60%', '34%',
-  '82%', '58%',
-] as const
-
-export function CodeEditorSkeleton() {
-  return (
-    <div className={styles.loadingSkeleton} aria-hidden="true">
-      <div className={styles.loadingGutter}>
-        {SKELETON_LINE_WIDTHS.map((_, index) => (
-          <span key={index} className={styles.loadingGutterLine} />
-        ))}
-      </div>
-      <div className={styles.loadingLines}>
-        {SKELETON_LINE_WIDTHS.map((width, index) => (
-          <span
-            key={index}
-            className={styles.loadingLine}
-            style={{ '--skeleton-line-width': width } as SkeletonLineStyle}
-          />
-        ))}
-      </div>
-      <span className={styles.loadingSrOnly} role="status">
-        Loading code editor…
-      </span>
-    </div>
   )
 }

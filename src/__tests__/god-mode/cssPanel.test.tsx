@@ -4,14 +4,15 @@
  * and new-selector creation without auto-assignment.
  */
 import { afterEach, beforeEach, describe, expect, it } from 'bun:test'
-import { act, cleanup, render, screen, waitFor } from '@testing-library/react'
+import { act, cleanup, fireEvent, render, screen, waitFor, within } from '@testing-library/react'
 import { EditorView } from '@codemirror/view'
 import { useEditorStore } from '@site/store/store'
 import { CssPanel, CSS_PANEL_APPLY_DELAY_MS } from '@site/code-dock/css'
 import '@modules/base/index'
 
 const nextFrame = () => new Promise((resolve) => requestAnimationFrame(resolve))
-const afterDebounce = () => new Promise((resolve) => setTimeout(resolve, CSS_PANEL_APPLY_DELAY_MS + 80))
+const afterDebounce = () =>
+  new Promise((resolve) => setTimeout(resolve, CSS_PANEL_APPLY_DELAY_MS + 80))
 
 function state() {
   return useEditorStore.getState()
@@ -60,6 +61,145 @@ beforeEach(setup)
 afterEach(cleanup)
 
 describe('CssPanel', () => {
+  it('applies a toolbar layout preset live and restores it through canvas undo', async () => {
+    const { cardId } = setup()
+    const view = await mountPanel()
+    act(() =>
+      view.dispatch({ selection: { anchor: view.state.doc.toString().indexOf('color: red') } }),
+    )
+    fireEvent.click(screen.getByRole('button', { name: 'Layout', exact: true }))
+    fireEvent.click(screen.getByRole('button', { name: 'Horizontal flex' }))
+    await act(afterDebounce)
+    expect(state().site!.styleRules[cardId].styles).toMatchObject({
+      display: 'flex',
+      flexDirection: 'row',
+      gap: '1rem',
+    })
+    expect(editorView()).toBe(view)
+    act(() => state().undo())
+    await waitFor(() => expect(editorView().state.doc.toString()).not.toContain('display: flex'))
+    expect(state().site!.styleRules[cardId].styles).toEqual({ color: 'red' })
+  })
+
+  it('navigates by selector and combines decoration toggles without losing underline', async () => {
+    const { cardId } = setup()
+    await mountPanel()
+    fireEvent.click(screen.getByRole('button', { name: 'Navigate CSS rules' }))
+    fireEvent.click(screen.getByRole('menuitem', { name: '.card', exact: true }))
+    fireEvent.click(screen.getByRole('button', { name: 'Typography', exact: true }))
+    fireEvent.click(screen.getByRole('button', { name: 'Underline', exact: true }))
+    fireEvent.click(screen.getByRole('button', { name: 'Strikethrough', exact: true }))
+    expect(
+      screen.getByRole('button', { name: 'Underline', exact: true }).getAttribute('aria-pressed'),
+    ).toBe('true')
+    await act(afterDebounce)
+    expect(state().site!.styleRules[cardId].styles.textDecorationLine).toBe(
+      'underline line-through',
+    )
+    fireEvent.click(screen.getByRole('button', { name: 'Strikethrough', exact: true }))
+    await act(afterDebounce)
+    expect(state().site!.styleRules[cardId].styles.textDecorationLine).toBe('underline')
+  })
+
+  it('opens icon-only category popups with tooltips without changing CSS', async () => {
+    const view = await mountPanel()
+    const text = view.state.doc.toString()
+    expect(screen.queryByRole('dialog')).toBeNull()
+    fireEvent.click(screen.getByRole('button', { name: 'Layout', exact: true }))
+    const row = screen.getByTestId('css-toolbar-settings')
+    expect(within(row).getByRole('button', { name: 'Display grid' })).toBeTruthy()
+    fireEvent.click(screen.getByRole('button', { name: 'Colors', exact: true }))
+    const colorRow = screen.getByTestId('css-toolbar-settings')
+    expect(within(colorRow).getByRole('button', { name: 'Transparent background' })).toBeTruthy()
+    expect(colorRow.textContent?.trim()).toBe('')
+    expect(screen.getByRole('dialog', { name: 'Colors' })).toBeTruthy()
+    expect(view.state.doc.toString()).toBe(text)
+    await act(nextFrame)
+    fireEvent.keyDown(screen.getByRole('dialog', { name: 'Colors' }), { key: 'Escape' })
+    await waitFor(() => expect(screen.queryByRole('dialog')).toBeNull())
+    expect(document.activeElement).toBe(screen.getByRole('button', { name: 'Colors', exact: true }))
+  })
+
+  it('shows grid controls after display grid, applies Grid-2 and Grid-3, and preserves authored rows and gaps', async () => {
+    const { cardId } = setup()
+    const view = await mountPanel()
+    replaceInDoc(
+      view,
+      'color: red;',
+      'color: red; gap: 2rem; grid-template-rows: repeat(2, minmax(0, 1fr));',
+    )
+    act(() =>
+      view.dispatch({ selection: { anchor: view.state.doc.toString().indexOf('color: red') } }),
+    )
+    expect(screen.queryByRole('button', { name: 'Grid columns', exact: true })).toBeNull()
+    fireEvent.click(screen.getByRole('button', { name: 'Layout', exact: true }))
+    fireEvent.click(screen.getByRole('button', { name: 'Display grid' }))
+    expect(screen.getByRole('button', { name: 'Grid columns', exact: true })).toBeTruthy()
+    fireEvent.click(screen.getByRole('button', { name: 'Grid-2: 2 columns' }))
+    await act(afterDebounce)
+    expect(state().site!.styleRules[cardId].styles).toMatchObject({
+      display: 'grid',
+      gridTemplateColumns: 'repeat(2, minmax(0, 1fr))',
+      gridTemplateRows: 'repeat(2, minmax(0, 1fr))',
+      gap: '2rem',
+      color: 'red',
+    })
+    fireEvent.click(screen.getByRole('button', { name: 'Grid-3: 3 columns' }))
+    await act(afterDebounce)
+    expect(state().site!.styleRules[cardId].styles.gridTemplateColumns).toBe(
+      'repeat(3, minmax(0, 1fr))',
+    )
+    act(() => state().undo())
+    await waitFor(() =>
+      expect(editorView().state.doc.toString()).toContain(
+        'grid-template-columns: repeat(2, minmax(0, 1fr))',
+      ),
+    )
+    act(() =>
+      editorView().dispatch({
+        selection: { anchor: editorView().state.doc.toString().indexOf('grid-template-columns') },
+      }),
+    )
+    fireEvent.click(screen.getByRole('button', { name: 'Layout', exact: true }))
+    expect(
+      screen.getByRole('button', { name: 'Grid-2: 2 columns' }).getAttribute('aria-pressed'),
+    ).toBe('true')
+  })
+
+  it('edits grid column and row counts and independent gaps through their icon controls', async () => {
+    const { cardId } = setup()
+    const view = await mountPanel()
+    act(() =>
+      view.dispatch({ selection: { anchor: view.state.doc.toString().indexOf('color: red') } }),
+    )
+    fireEvent.click(screen.getByRole('button', { name: 'Layout', exact: true }))
+    fireEvent.click(screen.getByRole('button', { name: 'Display grid' }))
+    for (const [label, value] of [
+      ['Grid columns', '5'],
+      ['Grid rows', '3'],
+      ['Column gap', '2rem'],
+      ['Row gap', '0.5rem'],
+    ]) {
+      fireEvent.click(screen.getByRole('button', { name: label, exact: true }))
+      const dialog = screen.getByRole('dialog', { name: 'Layout', exact: true })
+      fireEvent.change(within(dialog).getByLabelText(label, { selector: 'input' }), {
+        target: { value },
+      })
+      fireEvent.click(within(dialog).getByRole('button', { name: 'Apply', exact: true }))
+    }
+    await act(afterDebounce)
+    expect(state().site!.styleRules[cardId].styles).toMatchObject({
+      display: 'grid',
+      gridTemplateColumns: 'repeat(5, minmax(0, 1fr))',
+      gridTemplateRows: 'repeat(3, minmax(0, 1fr))',
+      columnGap: '2rem',
+      rowGap: '0.5rem',
+      color: 'red',
+    })
+    expect(editorView()).toBe(view)
+    expect(screen.getByTestId('css-toolbar-settings')).toBeTruthy()
+  })
+
   it('projects the selection and applies a typed change live, as one undo step the canvas can undo', async () => {
     const { cardId } = setup()
     const view = await mountPanel()
@@ -99,7 +239,9 @@ describe('CssPanel', () => {
     const { nodeId } = setup()
     const view = await mountPanel()
     act(() => {
-      view.dispatch({ changes: { from: view.state.doc.length, insert: '\n.brand-new {\n  color: hotpink;\n}\n' } })
+      view.dispatch({
+        changes: { from: view.state.doc.length, insert: '\n.brand-new {\n  color: hotpink;\n}\n' },
+      })
     })
     await act(afterDebounce)
 

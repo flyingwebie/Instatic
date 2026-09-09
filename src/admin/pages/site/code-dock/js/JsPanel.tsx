@@ -27,6 +27,8 @@ import {
 import { cn } from '@ui/cn'
 import { useDocumentSync, type DocumentSyncSource } from '../useDocumentSync'
 import { deriveJsCompletionCatalog } from '../completions'
+import { PanelHeader, type PanelHeaderProps } from '../PanelHeader'
+import { CodeEditorSkeleton } from '@site/code-editor'
 import { FormatButton } from '../FormatButton'
 import styles from '../EditorColumn.module.css'
 
@@ -62,17 +64,20 @@ function resolveTarget(inputs: JsPanelInputs): PageScriptTarget | null {
 const syncSource: DocumentSyncSource<JsPanelInputs> = {
   select: selectInputs,
   equal: (a, b) =>
-    a.site === b.site
-    && a.siteRuntime === b.siteRuntime
-    && a.activePageId === b.activePageId
-    && a.activeDocument === b.activeDocument,
+    a.site === b.site &&
+    a.siteRuntime === b.siteRuntime &&
+    a.activePageId === b.activePageId &&
+    a.activeDocument === b.activeDocument,
   read: (inputs) => {
     const target = resolveTarget(inputs)
     return target ? { docKey: `js:page:${target.page.id}`, text: target.file?.content ?? '' } : null
   },
 }
 
-export function JsPanel({ runtimeValidation }: { runtimeValidation?: RuntimeScriptValidationState }) {
+export function JsPanel({
+  runtimeValidation,
+  headerActions,
+}: PanelHeaderProps & { runtimeValidation?: RuntimeScriptValidationState }) {
   const inputs = useDeferredValue(useEditorStore(useShallow(selectInputs)))
   const createPageScript = useEditorStore((s) => s.createPageScript)
   const updateFileContent = useEditorStore((s) => s.updateFileContent)
@@ -84,7 +89,14 @@ export function JsPanel({ runtimeValidation }: { runtimeValidation?: RuntimeScri
   const target = resolveTarget(inputs)
 
   if (!target) {
-    return <p className={styles.empty}>Open a page to edit its script.</p>
+    return (
+      <>
+        <PanelHeader label="JS" actions={headerActions}>
+          <span />
+        </PanelHeader>
+        <p className={styles.empty}>Open a page to edit its script.</p>
+      </>
+    )
   }
 
   const { site, page, file } = target
@@ -106,7 +118,18 @@ export function JsPanel({ runtimeValidation }: { runtimeValidation?: RuntimeScri
 
   return (
     <div className={styles.panel} data-testid="js-panel">
-      <div className={styles.toolbar}>
+      <PanelHeader
+        label="JS"
+        actions={
+          <>
+            <FormatButton
+              onFormat={() => void editorRef.current?.format()}
+              testId="js-panel-format"
+            />
+            {headerActions}
+          </>
+        }
+      >
         <span
           className={cn(styles.toolbarNote, errorCount > 0 && styles.statusError)}
           role="status"
@@ -116,12 +139,9 @@ export function JsPanel({ runtimeValidation }: { runtimeValidation?: RuntimeScri
           {file ? '' : ' · created on first edit'}
           {errorCount > 0 ? ` · ${errorCount} error${errorCount === 1 ? '' : 's'}` : ''}
         </span>
-        <span className={styles.toolbarActions}>
-          <FormatButton onFormat={() => void editorRef.current?.format()} testId="js-panel-format" />
-        </span>
-      </div>
+      </PanelHeader>
       <div className={styles.editor}>
-        <Suspense fallback={<div className={styles.loading}>Loading editor</div>}>
+        <Suspense fallback={<CodeEditorSkeleton />}>
           <CodeMirrorEditor
             ref={editorRef}
             docKey={`js:page:${page.id}#${revision}`}
@@ -134,7 +154,9 @@ export function JsPanel({ runtimeValidation }: { runtimeValidation?: RuntimeScri
             projectFiles={file ? site.files : undefined}
             completions={completions}
             onChange={onChange}
-            onFormatError={(message) => pushToast({ kind: 'error', title: 'Could not format the script', body: message })}
+            onFormatError={(message) =>
+              pushToast({ kind: 'error', title: 'Could not format the script', body: message })
+            }
           />
         </Suspense>
       </div>

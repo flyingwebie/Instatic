@@ -23,7 +23,6 @@
   min-height: 0;
 }
 
-.loading,
 .empty {
   flex: 1;
   display: grid;
@@ -66,10 +65,18 @@
 }
 
 .toolbarNote {
+  flex: 1;
   min-width: 0;
   overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;
+}
+
+.panelLabel {
+  flex: none;
+  font-weight: 600;
+  color: var(--text-muted);
+  font-size: var(--text-2xs);
 }
 
 .dirty {

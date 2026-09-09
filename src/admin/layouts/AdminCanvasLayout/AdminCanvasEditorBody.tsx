@@ -1,11 +1,5 @@
-import {
-  DndContext,
-  PointerSensor,
-  pointerWithin,
-  useSensor,
-  useSensors,
-} from '@dnd-kit/core'
-import { lazy, Suspense, useEffect, type CSSProperties } from 'react'
+import { DndContext, PointerSensor, pointerWithin, useSensor, useSensors } from '@dnd-kit/core'
+import { lazy, Suspense, useEffect } from 'react'
 import { CanvasRoot } from '@admin/pages/site/canvas'
 import { CodeEditorPanel, CodeEditorSkeleton } from '@admin/pages/site/code-editor'
 import { useActiveLivePath } from '@admin/pages/site/hooks/useActiveLivePath'
@@ -30,15 +24,7 @@ import type { RuntimeScriptValidationState } from '@admin/pages/site/hooks/useRu
 import '@modules/base'
 import '@core/loops/sources'
 
-// God Mode Code Dock — mounted only while the mode is active, so the chunk
-// (and later, the CodeMirror panels behind it) never loads for users who
-// don't use God Mode.
-// Import the component file (not the barrel) so the emitted chunk is named
-// CodeDock-*.js — a kebab-case code-dock-*.js chunk false-positives the
-// per-icon-chunk gate for the vendored `code` icon (bundle-size-budgets).
-const CodeDock = lazy(() =>
-  import('@admin/pages/site/code-dock/CodeDock').then((m) => ({ default: m.CodeDock })),
-)
+import { CodeDock } from '@site/code-dock'
 
 const ImportHtmlModal = lazy(() =>
   import('@admin/modals/ImportHtml').then((m) => ({ default: m.ImportHtmlModal })),
@@ -121,7 +107,10 @@ export function AdminCanvasEditorBody({
               railOnly={hasRightSidebar && narrowChrome}
             />
             <div
-              className={cn(styles.canvasStage, hasRightSidebar && styles.canvasStageRightSidebarOpen)}
+              className={cn(
+                styles.canvasStage,
+                hasRightSidebar && styles.canvasStageRightSidebarOpen,
+              )}
               data-right-sidebar-expanded={hasRightSidebar ? 'true' : 'false'}
             >
               <div className={styles.canvasContent} key="site">
@@ -132,7 +121,9 @@ export function AdminCanvasEditorBody({
                   <CanvasRoot editable={canEditDraftSite} />
                 )}
                 {/* Properties can be unpinned into the floating draggable overlay. */}
-                {canSaveSite && propertiesPanelMode === 'floating' && <PropertiesPanel variant="floating" />}
+                {canSaveSite && propertiesPanelMode === 'floating' && (
+                  <PropertiesPanel variant="floating" />
+                )}
               </div>
             </div>
             {/* `mode` tells the RightSidebar which expansion model to use:
@@ -140,21 +131,14 @@ export function AdminCanvasEditorBody({
                   gated `sitePropertiesExpanded` selector.
                 - `'hidden'`:    Site viewer with no `pages.draft.save`
                   capability. */}
-            <RightSidebar
-              key="site"
-              mode={canSaveSite ? 'site' : 'hidden'}
-            />
+            <RightSidebar key="site" mode={canSaveSite ? 'site' : 'hidden'} />
           </div>
         </ConfirmDeleteProvider>
       </DndContext>
 
       {/* God Mode Code Dock — bottom region below the editor row (the shell
           is a column flex, so this lands under sidebars + canvas). */}
-      {showCodeDock && (
-        <Suspense fallback={<CodeDockLoading />}>
-          <CodeDock runtimeValidation={runtimeValidation} />
-        </Suspense>
-      )}
+      {showCodeDock && <CodeDock runtimeValidation={runtimeValidation} />}
 
       {/* Code editor/media preview: viewport overlay, not constrained by the
           canvas stage. The panel itself is small chrome; the heavy CodeMirror
@@ -176,27 +160,6 @@ export function AdminCanvasEditorBody({
         </Suspense>
       )}
     </>
-  )
-}
-
-/**
- * Dock-shaped placeholder while the God Mode chunk loads. The dock is a
- * sizeable lazy chunk (three CodeMirror panels), and on a cold dev-server
- * load that wait is long enough that an empty fallback reads as "the toggle
- * did nothing" — the canvas just shrinks. Hold the dock's height and say so.
- */
-function CodeDockLoading() {
-  const height = useEditorStore((s) => s.codeDockHeight)
-  return (
-    <div
-      className={styles.codeDockLoading}
-      style={{ '--code-dock-height': `${height}px` } as CSSProperties}
-      role="status"
-      aria-live="polite"
-      data-testid="code-dock-loading"
-    >
-      Loading code panels…
-    </div>
   )
 }
 

@@ -1,0 +1,107 @@
+.root {
+  flex: none;
+  min-width: 0;
+  border-bottom: 1px solid var(--border-subtle);
+  background: var(--bg-surface-2);
+}
+
+.toolbarRow {
+  display: flex;
+  align-items: center;
+  min-width: 0;
+}
+
+.controls {
+  min-width: 0;
+}
+
+.orderTrigger {
+  display: flex;
+  align-items: center;
+  flex-shrink: 0;
+  padding-inline-end: var(--space-xs);
+}
+
+.controls,
+.settings {
+  display: flex;
+  align-items: center;
+  flex-wrap: nowrap;
+  gap: var(--space-4xs);
+  padding: var(--space-3xs) var(--space-xs);
+  overflow-x: auto;
+  scrollbar-width: thin;
+  min-height: 34px;
+}
+
+.controls > *,
+.settings > * {
+  flex-shrink: 0;
+}
+
+.settings {
+  flex-wrap: wrap;
+  overflow-x: visible;
+}
+
+.presetIcon {
+  position: relative;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+
+.badge {
+  position: absolute;
+  inset-inline-end: -4px;
+  bottom: -4px;
+  background: var(--bg-surface);
+  color: var(--text);
+  border-radius: var(--radius-sm);
+  font-size: var(--text-3xs);
+  line-height: 1;
+  min-width: 8px;
+  text-align: center;
+}
+
+.heading {
+  padding: var(--space-xs);
+  font-size: var(--text-2xs);
+  color: var(--text-muted);
+}
+
+.form {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-3xs);
+  padding: var(--space-xs);
+  font-size: var(--text-2xs);
+  color: var(--text-muted);
+}
+
+.valueRow {
+  display: flex;
+  align-items: center;
+  gap: var(--space-xs);
+}
+
+.valueRow > :last-child {
+  min-width: 0;
+  flex: 1;
+}
+
+.error {
+  color: var(--danger);
+}
+
+.ruleLabel {
+  flex: 1;
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.readOnly {
+  color: var(--text-muted);
+  font-size: var(--text-2xs);
+}

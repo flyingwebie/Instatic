@@ -14,7 +14,7 @@
  * a Component instance's internals (those jump to the definition).
  *
  * Two kinds of change are HELD instead of applied, and go through the
- * explicit Apply (button or Mod-Enter) with a confirm dialog:
+ * explicit review (contextual action or Mod-Enter) with a confirm dialog:
  *
  *   - DESTRUCTIVE: the import's diff removes locked nodes or Component/slot
  *     structures — summarised by `summarizeDestructiveApply` and confirmed
@@ -58,11 +58,17 @@ import { pushToast } from '@ui/components/Toast'
 import { cn } from '@ui/cn'
 import { useDocumentSync, type DocumentSyncSource } from '../useDocumentSync'
 import { deriveHtmlCompletionCatalog, useDataMeta } from '../completions'
+import { PanelHeader, type PanelHeaderProps } from '../PanelHeader'
+import { CodeEditorSkeleton } from '@site/code-editor'
 import { FormatButton } from '../FormatButton'
 import { deriveHtmlPanelDocument, type HtmlPanelDocument } from './htmlPanelDocument'
 import { summarizeDestructiveApply, type DestructiveRemoval } from './applyGuardrails'
 import { HtmlApplyConfirmDialog } from './HtmlApplyConfirmDialog'
-import { selectSelectionScope, selectionScopeEqual, type SelectionScopeInputs } from '../selectionScope'
+import {
+  selectSelectionScope,
+  selectionScopeEqual,
+  type SelectionScopeInputs,
+} from '../selectionScope'
 import styles from '../EditorColumn.module.css'
 
 const CodeMirrorEditor = lazy(() => import('@site/code-editor/CodeMirrorEditor'))
@@ -105,11 +111,11 @@ function statusText(status: PanelStatus): string {
     case 'syntax':
       return `${status.count} syntax error${status.count === 1 ? '' : 's'} — not applied`
     case 'stale':
-      return 'Draft is out of date — Apply overwrites'
+      return 'Draft is out of date — review to overwrite'
     case 'held':
       return status.hold.kind === 'error'
         ? `Not applied: ${status.hold.message}`
-        : `Removes ${describeRemovals(status.hold.removals)} — Apply (${APPLY_SHORTCUT}) asks you to confirm`
+        : `Removes ${describeRemovals(status.hold.removals)} — review edits to confirm`
     case 'dirty':
       return 'Applying…'
     case 'clean':
@@ -140,9 +146,11 @@ interface PendingApply {
 
 function pendingEqual(a: PendingApply, b: PendingApply): boolean {
   return (
-    a.stale === b.stale
-    && a.removals.length === b.removals.length
-    && a.removals.every((removal, i) => removal.id === b.removals[i].id && removal.retyped === b.removals[i].retyped)
+    a.stale === b.stale &&
+    a.removals.length === b.removals.length &&
+    a.removals.every(
+      (removal, i) => removal.id === b.removals[i].id && removal.retyped === b.removals[i].retyped,
+    )
   )
 }
 
@@ -156,7 +164,10 @@ function scopeName(document: HtmlPanelDocument, site: NonNullable<EditorStore['s
 }
 
 function nodeExistsInSite(site: NonNullable<EditorStore['site']>, nodeId: string): boolean {
-  return site.pages.some((page) => nodeId in page.nodes) || site.visualComponents.some((vc) => nodeId in vc.tree.nodes)
+  return (
+    site.pages.some((page) => nodeId in page.nodes) ||
+    site.visualComponents.some((vc) => nodeId in vc.tree.nodes)
+  )
 }
 
 /** The cursor's node and its ancestors, root first — the breadcrumb trail. */
@@ -165,7 +176,7 @@ function breadcrumbTrail(tree: NodeTree<PageNode>, nodeId: string): PageNode[] {
   return node ? [...getAncestors(tree, nodeId), node] : []
 }
 
-export function HtmlPanel() {
+export function HtmlPanel({ headerActions }: PanelHeaderProps = {}) {
   // Deferred: during a burst of store changes (a collab load, an agent
   // batch) the expensive projection is derived once the burst settles.
   const inputs = useDeferredValue(useEditorStore(useShallow(selectSelectionScope)))
@@ -208,7 +219,14 @@ export function HtmlPanel() {
   )
 
   if (!document || !inputs.site) {
-    return <p className={styles.empty}>Open a page to edit its HTML.</p>
+    return (
+      <>
+        <PanelHeader label="HTML" actions={headerActions}>
+          <span />
+        </PanelHeader>
+        <p className={styles.empty}>Open a page to edit its HTML.</p>
+      </>
+    )
   }
 
   const site = inputs.site
@@ -216,7 +234,7 @@ export function HtmlPanel() {
   const activePage =
     inputs.activeDocument?.kind === 'visualComponent'
       ? null
-      : site.pages.find((page) => page.id === inputs.activePageId) ?? null
+      : (site.pages.find((page) => page.id === inputs.activePageId) ?? null)
   const completions = deriveHtmlCompletionCatalog({ site, tree, rootId, activePage, dataMeta })
   const draft = scopeDraft
   const dirty = scopeDirty
@@ -224,7 +242,8 @@ export function HtmlPanel() {
   const syntaxErrorCount = draft?.syntaxErrorCount ?? 0
   const canApply = dirty && syntaxErrorCount === 0 && !readOnly
   const orphaned = Object.entries(drafts).find(([, d]) => !nodeExistsInSite(site, d.rootId)) ?? null
-  const trailId = cursor && cursor.docKey === docKey && cursor.uid in tree.nodes ? cursor.uid : rootId
+  const trailId =
+    cursor && cursor.docKey === docKey && cursor.uid in tree.nodes ? cursor.uid : rootId
   const trail = breadcrumbTrail(tree, trailId)
 
   const status: PanelStatus = readOnly
@@ -237,7 +256,10 @@ export function HtmlPanel() {
           ? { kind: 'held', hold: draft.held }
           : dirty
             ? { kind: 'dirty' }
-            : { kind: 'clean', applied: applied?.docKey === docKey && applied.html === html ? applied : null }
+            : {
+                kind: 'clean',
+                applied: applied?.docKey === docKey && applied.html === html ? applied : null,
+              }
 
   const dropDraft = (key: string) => setCodeDockDraft(key, null)
 
@@ -247,7 +269,15 @@ export function HtmlPanel() {
       docKey,
       previous
         ? { ...previous, text, syntaxErrorCount: info.syntaxErrorCount, held }
-        : { kind: 'html', text, syntaxErrorCount: info.syntaxErrorCount, baseHtml: html, rootId, name: scopeName(document, site), held },
+        : {
+            kind: 'html',
+            text,
+            syntaxErrorCount: info.syntaxErrorCount,
+            baseHtml: html,
+            rootId,
+            name: scopeName(document, site),
+            held,
+          },
     )
   }
 
@@ -299,13 +329,20 @@ export function HtmlPanel() {
       if (!commit(result)) rememberDraft(text, info, { kind: 'error', message: REFUSED })
     } catch (err) {
       console.error('[HtmlPanel] live apply failed:', err)
-      rememberDraft(text, info, { kind: 'error', message: getErrorMessage(err, 'Unknown import error') })
+      rememberDraft(text, info, {
+        kind: 'error',
+        message: getErrorMessage(err, 'Unknown import error'),
+      })
     }
   }
 
   const reportFailure = (err: unknown) => {
     console.error('[HtmlPanel] apply failed:', err)
-    pushToast({ kind: 'error', title: 'Could not apply HTML', body: getErrorMessage(err, 'Unknown import error') })
+    pushToast({
+      kind: 'error',
+      title: 'Could not apply HTML',
+      body: getErrorMessage(err, 'Unknown import error'),
+    })
   }
 
   const apply = () => {
@@ -317,7 +354,12 @@ export function HtmlPanel() {
         setPending(summary)
         return
       }
-      if (!commit(result)) pushToast({ kind: 'error', title: 'Could not apply HTML', body: `Not applied: ${REFUSED}.` })
+      if (!commit(result))
+        pushToast({
+          kind: 'error',
+          title: 'Could not apply HTML',
+          body: `Not applied: ${REFUSED}.`,
+        })
     } catch (err) {
       reportFailure(err)
     }
@@ -338,7 +380,12 @@ export function HtmlPanel() {
       const harmless = !summary.stale && summary.removals.length === 0
       if (harmless || pendingEqual(pending, summary)) {
         setPending(null)
-        if (!commit(result)) pushToast({ kind: 'error', title: 'Could not apply HTML', body: `Not applied: ${REFUSED}.` })
+        if (!commit(result))
+          pushToast({
+            kind: 'error',
+            title: 'Could not apply HTML',
+            body: `Not applied: ${REFUSED}.`,
+          })
       } else {
         setPending(summary)
       }
@@ -354,10 +401,18 @@ export function HtmlPanel() {
     if (!orphaned) return
     try {
       await navigator.clipboard.writeText(orphaned[1].text)
-      pushToast({ kind: 'success', title: 'Draft copied', body: `The unapplied HTML for “${orphaned[1].name}” is on the clipboard.` })
+      pushToast({
+        kind: 'success',
+        title: 'Draft copied',
+        body: `The unapplied HTML for “${orphaned[1].name}” is on the clipboard.`,
+      })
     } catch (err) {
       console.error('[HtmlPanel] copy draft failed:', err)
-      pushToast({ kind: 'error', title: 'Could not copy the draft', body: getErrorMessage(err, 'Clipboard unavailable') })
+      pushToast({
+        kind: 'error',
+        title: 'Could not copy the draft',
+        body: getErrorMessage(err, 'Clipboard unavailable'),
+      })
     }
   }
 
@@ -385,7 +440,36 @@ export function HtmlPanel() {
 
   return (
     <div className={styles.panel} data-testid="html-panel" data-dirty={dirty ? 'true' : 'false'}>
-      <div className={styles.toolbar}>
+      <PanelHeader
+        label="HTML"
+        actions={
+          <>
+            <FormatButton onFormat={onFormat} testId="html-panel-format" />
+            {readOnly && definitionVcId ? (
+              <Button
+                variant="ghost"
+                size="xs"
+                onClick={() => setActiveDocument({ kind: 'visualComponent', vcId: definitionVcId })}
+                data-testid="html-panel-open-definition"
+              >
+                Open component definition
+              </Button>
+            ) : canApply && (stale || draft?.held?.kind === 'destructive') ? (
+              <Button
+                variant="primary"
+                size="xs"
+                disabled={!canApply}
+                onClick={apply}
+                tooltip={`Apply the held edits to the page tree (${APPLY_SHORTCUT})`}
+                data-testid="html-panel-review"
+              >
+                Review edits
+              </Button>
+            ) : null}
+            {headerActions}
+          </>
+        }
+      >
         <span
           className={cn(
             styles.toolbarNote,
@@ -398,41 +482,31 @@ export function HtmlPanel() {
         >
           {statusText(status)}
         </span>
-        <span className={styles.toolbarActions}>
-          <FormatButton onFormat={onFormat} testId="html-panel-format" />
-          {readOnly && definitionVcId ? (
-            <Button
-              variant="ghost"
-              size="xs"
-              onClick={() => setActiveDocument({ kind: 'visualComponent', vcId: definitionVcId })}
-              data-testid="html-panel-open-definition"
-            >
-              Open component definition
-            </Button>
-          ) : (
-            <Button
-              variant="primary"
-              size="xs"
-              disabled={!canApply}
-              onClick={apply}
-              tooltip={`Apply the held edits to the page tree (${APPLY_SHORTCUT})`}
-              data-testid="html-panel-apply"
-            >
-              Apply
-            </Button>
-          )}
-        </span>
-      </div>
-      <nav className={styles.breadcrumbs} aria-label="Element path" data-testid="html-panel-breadcrumbs">
+      </PanelHeader>
+      <nav
+        className={styles.breadcrumbs}
+        aria-label="Element path"
+        data-testid="html-panel-breadcrumbs"
+      >
         {trail.map((node, index) => (
           <span key={node.id} className={styles.toolbarActions}>
-            {index > 0 ? <ChevronRightIcon size={10} className={styles.breadcrumbSeparator} aria-hidden="true" /> : null}
+            {index > 0 ? (
+              <ChevronRightIcon
+                size={10}
+                className={styles.breadcrumbSeparator}
+                aria-hidden="true"
+              />
+            ) : null}
             <Button
               variant="ghost"
               size="xs"
               pressed={node.id === inputs.selectedNodeId}
               onClick={() => onTagClick(node.id)}
-              tooltip={node.id === inputs.selectedNodeId ? 'Selected element' : `Select ${nodeName(node, site)}`}
+              tooltip={
+                node.id === inputs.selectedNodeId
+                  ? 'Selected element'
+                  : `Select ${nodeName(node, site)}`
+              }
               data-testid="html-panel-crumb"
               data-node-id={node.id}
             >
@@ -444,7 +518,8 @@ export function HtmlPanel() {
       {stale ? (
         <div className={styles.banner} role="alert" data-testid="html-panel-stale">
           <span className={styles.bannerText}>
-            Content changed remotely. Your draft is kept; Apply overwrites the remote version.
+            Content changed remotely. Your draft is kept; review edits to overwrite the remote
+            version.
           </span>
           <Button variant="ghost" size="xs" onClick={discardDraft} data-testid="html-panel-discard">
             Discard draft
@@ -457,17 +532,27 @@ export function HtmlPanel() {
             Unapplied edits to “{orphaned[1].name}” cannot be applied: the element was removed.
           </span>
           <span className={styles.bannerActions}>
-            <Button variant="ghost" size="xs" onClick={copyOrphanedDraft} data-testid="html-panel-orphan-copy">
+            <Button
+              variant="ghost"
+              size="xs"
+              onClick={copyOrphanedDraft}
+              data-testid="html-panel-orphan-copy"
+            >
               Copy draft
             </Button>
-            <Button variant="ghost" size="xs" onClick={() => dropDraft(orphaned[0])} data-testid="html-panel-orphan-dismiss">
+            <Button
+              variant="ghost"
+              size="xs"
+              onClick={() => dropDraft(orphaned[0])}
+              data-testid="html-panel-orphan-dismiss"
+            >
               Dismiss
             </Button>
           </span>
         </div>
       ) : null}
       <div className={styles.editor}>
-        <Suspense fallback={<div className={styles.loading}>Loading editor</div>}>
+        <Suspense fallback={<CodeEditorSkeleton />}>
           <CodeMirrorEditor
             ref={editorRef}
             docKey={`${docKey}#${revision}`}

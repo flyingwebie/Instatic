@@ -315,8 +315,10 @@ describe('Bundle size budgets', () => {
     const iconVendorChunks = findChunks('pixel-art-icons-')
     expect(iconVendorChunks).toHaveLength(1)
 
+    // Vite uses eight-character hashes. Longer suffixes can be another module
+    // name: code-dock-<hash>.js is not a standalone code icon chunk.
     const iconChunkPatterns = vendoredIconNames().map(
-      (iconName) => new RegExp(`^${regexEscape(iconName)}-[A-Za-z0-9_-]+\\.js$`),
+      (iconName) => new RegExp(`^${regexEscape(iconName)}-[A-Za-z0-9_-]{8}\\.js$`),
     )
     const individualIconChunks = readdirSync(DIST_ASSETS).filter((asset) =>
       iconChunkPatterns.some((pattern) => pattern.test(asset)),

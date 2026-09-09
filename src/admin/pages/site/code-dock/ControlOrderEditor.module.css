@@ -1,0 +1,32 @@
+.settings {
+  display: flex;
+  align-items: center;
+  gap: var(--space-4xs);
+  padding: var(--space-3xs) var(--space-xs);
+}
+
+.orderPalette {
+  display: grid;
+  --order-columns: 5;
+  grid-template-columns: repeat(var(--order-columns), minmax(0, 1fr));
+  gap: var(--space-xs);
+}
+
+.orderPalette > * {
+  justify-self: center;
+}
+
+.orderItem {
+  cursor: grab;
+}
+
+.orderItem[data-drop-target='true'] {
+  outline: 1px solid var(--text);
+  background: var(--bg-surface);
+}
+
+.heading {
+  padding: var(--space-xs);
+  font-size: var(--text-2xs);
+  color: var(--text-muted);
+}

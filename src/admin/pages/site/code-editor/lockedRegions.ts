@@ -89,3 +89,8 @@ export function foldLockedRanges(view: EditorView, ranges: readonly LockedRange[
   })
   if (effects.length > 0) view.dispatch({ effects })
 }
+
+/** Current protected ranges, including offsets after edits above them. */
+export function getLockedRanges(state: EditorState): readonly LockedRange[] {
+  return state.field(lockedRangesField, false) ?? []
+}
