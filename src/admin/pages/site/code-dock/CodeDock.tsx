@@ -27,9 +27,11 @@ import {
   type CSSProperties,
   type ReactNode,
 } from 'react'
-import { useEditorStore } from '@site/store/store'
+import { selectCodeDockLoopNode, useEditorStore } from '@site/store/store'
 import {
   clampCodeDockHeight,
+  CODE_DOCK_MIN_HEIGHT,
+  CODE_DOCK_MAX_HEIGHT,
   CODE_DOCK_PANEL_IDS,
   type CodeDockColumnWeights,
   type CodeDockPanelId,
@@ -81,7 +83,9 @@ function trackPointerDrag(
   onEnd: (commit: boolean) => void,
 ): void {
   handle.setPointerCapture(pointerId)
+  handle.dataset.dragging = 'true'
   const finish = (commit: boolean) => {
+    delete handle.dataset.dragging
     handle.removeEventListener('pointermove', onMove)
     handle.removeEventListener('pointerup', onUp)
     handle.removeEventListener('pointercancel', onCancel)
@@ -111,6 +115,7 @@ export function CodeDock({ runtimeValidation }: CodeDockProps) {
   const setCodeDockColumnWeights = useEditorStore((s) => s.setCodeDockColumnWeights)
   const setPropertiesPanelMode = useEditorStore((s) => s.setPropertiesPanelMode)
   const setPropertiesPanel = useEditorStore((s) => s.setPropertiesPanel)
+  const setFocusedPanel = useEditorStore((s) => s.setFocusedPanel)
 
   const panelOrder = useEditorStore((s) => s.codeDockPanelOrder)
   const setPanelOrder = useEditorStore((s) => s.setCodeDockPanelOrder)
@@ -157,12 +162,12 @@ export function CodeDock({ runtimeValidation }: CodeDockProps) {
     visiblePanels.length > 1 &&
     dockWidth < visiblePanels.length * MIN_COLUMN_WIDTH
 
-  const openFloatingProperties = () => {
-    // Escape hatch: module-specific controls (image pickers, form settings)
-    // have no code representation, so Properties stays reachable as a
-    // floating window while the docked sidebar is suppressed.
-    setPropertiesPanelMode('floating')
+  const openProperties = () => {
+    // Loops use the fixed inspector; other module controls stay available
+    // through the floating Properties panel.
+    if (!selectCodeDockLoopNode(useEditorStore.getState())) setPropertiesPanelMode('floating')
     setPropertiesPanel({ collapsed: false })
+    setFocusedPanel('properties')
   }
 
   // ── Height drag ──────────────────────────────────────────────────────────
@@ -262,17 +267,6 @@ export function CodeDock({ runtimeValidation }: CodeDockProps) {
       data-testid="code-dock"
       data-tabbed={tabbed ? 'true' : 'false'}
     >
-      <div
-        className={styles.heightHandle}
-        role="separator"
-        aria-orientation="horizontal"
-        aria-label="Resize Code Dock"
-        aria-valuenow={height}
-        tabIndex={0}
-        onPointerDown={onHeightPointerDown}
-        onKeyDown={onHeightKeyDown}
-      />
-
       <header className={styles.header}>
         <div
           className={styles.panelToggles}
@@ -308,6 +302,18 @@ export function CodeDock({ runtimeValidation }: CodeDockProps) {
             )
           })}
         </div>
+        <div
+          className={styles.heightHandle}
+          role="separator"
+          aria-orientation="horizontal"
+          aria-label="Resize Code Dock"
+          aria-valuenow={height}
+          aria-valuemin={CODE_DOCK_MIN_HEIGHT}
+          aria-valuemax={CODE_DOCK_MAX_HEIGHT}
+          tabIndex={0}
+          onPointerDown={onHeightPointerDown}
+          onKeyDown={onHeightKeyDown}
+        />
         <div className={styles.headerActions} ref={orderTriggerRef}>
           <Button
             ref={orderRef}
@@ -329,7 +335,7 @@ export function CodeDock({ runtimeValidation }: CodeDockProps) {
             iconOnly
             aria-label="Properties Panel"
             tooltip="Properties Panel"
-            onClick={openFloatingProperties}
+            onClick={openProperties}
             data-testid="code-dock-open-properties"
           >
             <SlidersHorizontalIcon size={14} />

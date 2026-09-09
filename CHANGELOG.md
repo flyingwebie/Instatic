@@ -4,6 +4,15 @@ All notable changes to Instatic will be documented here.
 
 This project is pre-1.0. Breaking changes may appear in minor or patch releases until a stable release line exists.
 
+## 0.0.21 - 2026-09-09
+
+### Editor
+
+- Preserve multiline HTML formatting when loop settings change. Formatting or leaving the editor flushes pending edits so they cannot overwrite the next loop setting change.
+- Open a dedicated, fixed right sidebar for loop settings while the code dock remains open, with clearer spacing between controls.
+- Refine the code dock with a compact inline resize grip, softer borders, rounded panel corners, and distinct code and line-number backgrounds. Resizing remains keyboard accessible and saved across sessions.
+- Improve syntax highlighting contrast in the light theme.
+
 ## 0.0.20 - 2026-09-09
 
 ### Editor

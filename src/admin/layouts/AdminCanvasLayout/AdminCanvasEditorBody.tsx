@@ -9,7 +9,7 @@ import { LayoutNameDialog } from '@admin/pages/site/dialogs/LayoutNameDialog'
 import { PropertiesPanel } from '@admin/pages/site/panels/PropertiesPanel'
 import { LeftSidebar } from '@admin/pages/site/sidebars/LeftSidebar'
 import { RightSidebar } from '@admin/pages/site/sidebars/RightSidebar'
-import { selectRightSidebarExpanded, useEditorStore } from '@admin/pages/site/store/store'
+import { selectCodeDockLoopNode, selectRightSidebarExpanded, useEditorStore } from '@admin/pages/site/store/store'
 import { useNarrowEditorChrome } from '@site/layout/responsiveChrome'
 import { ConfirmDeleteProvider } from '@admin/shared/dialogs/ConfirmDeleteDialog'
 import { Dialog } from '@ui/components/Dialog'
@@ -54,6 +54,7 @@ export function AdminCanvasEditorBody({
   // postTypes templates stays out of the admin-shell bundle.
   useActiveLivePath()
 
+  const codeDockLoopNode = useEditorStore(selectCodeDockLoopNode)
   const propertiesPanelMode = useEditorStore((s) => s.propertiesPanelMode)
   const rightSidebarExpanded = useEditorStore(selectRightSidebarExpanded)
   const godModeUnlocked = useGodModeUnlocked()
@@ -121,7 +122,7 @@ export function AdminCanvasEditorBody({
                   <CanvasRoot editable={canEditDraftSite} />
                 )}
                 {/* Properties can be unpinned into the floating draggable overlay. */}
-                {canSaveSite && propertiesPanelMode === 'floating' && (
+                {canSaveSite && !codeDockLoopNode && propertiesPanelMode === 'floating' && (
                   <PropertiesPanel variant="floating" />
                 )}
               </div>

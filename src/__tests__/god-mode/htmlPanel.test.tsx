@@ -12,7 +12,9 @@ import { EditorView } from '@codemirror/view'
 import { useEditorStore } from '@site/store/store'
 import { HtmlPanel, HTML_PANEL_APPLY_DELAY_MS } from '@site/code-dock/html'
 import { getKeybindingForCommand } from '@admin/spotlight/keybindings'
+import { RightSidebar } from '@site/sidebars/RightSidebar'
 import '@modules/base/index'
+import '@core/loops/sources'
 
 const nextFrame = () => new Promise((resolve) => requestAnimationFrame(resolve))
 /** Let the live-apply debounce flush. */
@@ -128,6 +130,65 @@ describe('HtmlPanel', () => {
     })
     expect(state().site!.pages[0].nodes[textId].props.text).toBe('Hello {page.title}')
     await waitFor(() => expect(editorView().state.doc.toString()).toContain('Hello {page.title}'))
+  })
+
+  it('keeps formatted loop markup after a live pagination edit', async () => {
+    const { rootId } = setup()
+    const loopId = state().insertNode('base.loop', {
+      sourceId: 'data.rows', filters: { tableId: 'articles' },
+      orderBy: 'slug', direction: 'asc', limit: 1000, offset: 0,
+      pagination: 'infinite', pageSize: 12, tag: 'div',
+    }, rootId)
+    state().insertNode('base.text', { text: '12', tag: 'span' }, loopId)
+    const nestedId = state().insertNode('base.loop', { sourceId: 'site.pages' }, loopId)
+    state().insertNode('base.text', { text: '{currentEntry.title}', tag: 'p' }, nestedId)
+    state().selectNode(loopId)
+    const view = await mountPanel()
+    await act(async () => { fireEvent.click(screen.getByTestId('html-panel-format')) })
+    await waitFor(() => expect(docText()).toContain('\n  data-page-size="12"'))
+    await afterDebounce()
+    const formatted = docText()
+    expect(formatted).toContain('\n  data-page-size="12"')
+    replaceInDoc(view, 'data-page-size="12"', 'data-page-size="10"')
+    await afterDebounce()
+    expect(state().site!.pages[0].nodes[loopId].props.pageSize).toBe(10)
+    expect(docText()).toBe(formatted.replace('data-page-size="12"', 'data-page-size="10"'))
+    expect(editorView()).toBe(view)
+  })
+
+  it('docks only loop settings beside code and preserves formatting when a setting changes', async () => {
+    const { rootId, containerId } = setup()
+    const loopId = state().insertNode('base.loop', {
+      sourceId: 'site.pages', pagination: 'infinite', pageSize: 12,
+    }, rootId)
+    state().insertNode('base.text', { text: '{currentEntry.title}', tag: 'p' }, loopId)
+    state().setGodModeActive(true)
+    state().setPropertiesPanelMode('floating')
+    state().selectNode(loopId)
+    render(<><RightSidebar mode="site" /><HtmlPanel /></>)
+    await waitFor(() => expect(document.querySelector('.cm-editor')).toBeTruthy())
+    await nextFrame()
+    const view = editorView()
+    expect(screen.getByTestId('right-sidebar').getAttribute('data-expanded')).toBe('true')
+    expect(screen.getByRole('region', { name: 'Loop settings' })).toBeTruthy()
+    expect(screen.queryByTestId('properties-panel')).toBeNull()
+    expect(screen.queryByRole('button', { name: 'Styles', exact: true })).toBeNull()
+    await act(async () => { fireEvent.click(screen.getByTestId('html-panel-format')) })
+    await waitFor(() => expect(docText()).toContain('\n  data-page-size="12"'))
+    await afterDebounce()
+    const formatted = docText()
+    const input = screen.getByLabelText('Page size')
+    act(() => { fireEvent.change(input, { target: { value: '9' } }); fireEvent.blur(input) })
+    await waitFor(() => expect(state().site!.pages[0].nodes[loopId].props.pageSize).toBe(9))
+    await waitFor(() => expect(docText()).toBe(formatted.replace('data-page-size="12"', 'data-page-size="9"')))
+    expect(editorView()).toBe(view)
+    act(() => { fireEvent.click(screen.getByRole('button', { name: 'Close Loop settings panel' })) })
+    expect(screen.getByTestId('right-sidebar').getAttribute('data-expanded')).toBe('false')
+    act(() => { state().setPropertiesPanel({ collapsed: false }) })
+    expect(screen.getByRole('region', { name: 'Loop settings' })).toBeTruthy()
+    act(() => { state().selectNode(containerId) })
+    expect(screen.queryByRole('region', { name: 'Loop settings' })).toBeNull()
+    expect(screen.getByTestId('right-sidebar').getAttribute('data-expanded')).toBe('false')
   })
 
   it('holds a document that does not parse, with visible diagnostics, until it parses again', async () => {

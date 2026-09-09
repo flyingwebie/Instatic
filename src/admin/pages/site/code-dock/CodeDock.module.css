@@ -7,37 +7,57 @@
   flex-direction: column;
   height: var(--code-dock-height);
   min-height: 0;
-  background: var(--bg-surface);
-  border-top: 1px solid var(--border-muted);
+  background: var(--bg-body);
+  border: 1px solid var(--border-muted);
+  border-radius: var(--panel-radius);
 }
 
 .heightHandle {
-  position: absolute;
-  top: -3px;
-  left: 0;
-  right: 0;
-  height: 6px;
+  position: relative;
+  width: 64px;
+  height: 24px;
+  border-radius: var(--radius);
   cursor: row-resize;
   z-index: 1;
   touch-action: none;
 }
 
+.heightHandle::after {
+  content: '';
+  position: absolute;
+  top: 50%;
+  left: 50%;
+  width: 48px;
+  height: 4px;
+  transform: translate(-50%, -50%);
+  border-radius: var(--radius);
+  background: var(--text-muted);
+}
+
 .heightHandle:hover,
-.heightHandle:focus-visible {
-  background: var(--overlay-10);
+.heightHandle:focus-visible,
+.heightHandle[data-dragging='true'] {
+  background: var(--overlay-5);
   outline: none;
 }
 
+.heightHandle:hover::after,
+.heightHandle:focus-visible::after,
+.heightHandle[data-dragging='true']::after {
+  background: var(--text-bright);
+}
+
 .header {
-  display: flex;
+  display: grid;
+  grid-template-columns: 1fr auto 1fr;
   align-items: center;
-  justify-content: space-between;
   gap: var(--space-s);
   padding: var(--space-2xs) var(--space-s);
-  border-bottom: 1px solid var(--border-subtle);
+  border-bottom: 1px solid var(--border-muted);
 }
 
 .panelToggles {
+  justify-self: start;
   display: flex;
   align-items: center;
   gap: var(--space-px);
@@ -95,6 +115,7 @@
   flex: 1 1 0;
   min-width: 0;
   min-height: 0;
+  padding: var(--space-3xs);
 }
 
 .columnDivider {
@@ -110,11 +131,12 @@
 .columnDivider::after {
   content: '';
   position: absolute;
-  top: 0;
-  bottom: 0;
+  top: var(--space-xs);
+  bottom: var(--space-xs);
   left: 3px;
   width: 1px;
-  background: var(--border-subtle);
+  background: var(--border-muted);
+  border-radius: var(--radius);
 }
 
 .columnDivider:hover::after,
@@ -156,6 +178,7 @@
 }
 
 .headerActions {
+  justify-self: end;
   display: flex;
   align-items: center;
   gap: var(--space-3xs);

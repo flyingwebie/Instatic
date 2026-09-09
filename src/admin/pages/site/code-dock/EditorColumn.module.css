@@ -3,24 +3,46 @@
   flex-direction: column;
   flex: 1;
   min-height: 0;
+  background: var(--bg-body);
 }
 
 .editor {
   flex: 1;
   min-height: 0;
+  background: var(--bg-surface);
+  border: 1px solid var(--border-muted);
+  border-radius: var(--panel-radius);
 }
 
 .editor [data-codemirror-container] {
   height: 100%;
   min-height: 0;
+  border-radius: inherit;
 }
 
 .editor :global(.cm-editor) {
   height: 100%;
+  background: var(--bg-surface);
+  border-radius: inherit;
+}
+
+.editor :global(.cm-gutters) {
+  background: var(--bg-surface-2);
+  border-right: 1px solid var(--border-muted);
+}
+
+.editor :global(.cm-lineNumbers .cm-gutterElement) {
+  color: var(--text-subtle);
+}
+
+.editor :global(.cm-activeLine),
+.editor :global(.cm-activeLineGutter) {
+  background: var(--overlay-5);
 }
 
 .editor :global(.cm-scroller) {
   min-height: 0;
+  border-radius: inherit;
 }
 
 .empty {
@@ -59,7 +81,7 @@
   justify-content: space-between;
   gap: var(--space-xs);
   padding: var(--space-3xs) var(--space-s);
-  border-bottom: 1px solid var(--border-subtle);
+  border-bottom: 1px solid var(--border-muted);
   font-size: var(--text-2xs);
   color: var(--text-muted);
 }
@@ -123,7 +145,7 @@
   align-items: center;
   gap: var(--space-4xs);
   padding: var(--space-4xs) var(--space-xs);
-  border-bottom: 1px solid var(--border-subtle);
+  border-bottom: 1px solid var(--border-muted);
   font-size: var(--text-2xs);
   color: var(--text-muted);
   overflow-x: auto;

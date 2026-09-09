@@ -28,9 +28,10 @@
  * @see Constraint #402 — no inline styles
  */
 
+import { syncEditorValue, valueSync, type ValueSyncMode } from './editorValueSync'
 import { useRef, useEffect, useEffectEvent, useCallback, useImperativeHandle, type Ref } from 'react'
 import { EditorView, basicSetup } from 'codemirror'
-import { Annotation, EditorState, Prec } from '@codemirror/state'
+import { EditorState, Prec } from '@codemirror/state'
 import {
   acceptCompletion,
   autocompletion,
@@ -64,7 +65,6 @@ import { uidInspector } from './uidInspector'
 import { cssVarShorthand } from './cssVarShorthand'
 import { cssToolbarContext, runCssToolbarCommand } from './cssToolbarCommands'
 import type { CssToolbarCommand, CssToolbarContext, CssToolbarResult } from './cssToolbarTypes'
-import { documentChanges } from './documentDiff'
 import { formatDocument, isFormattableLanguage, type FormatResult } from './formatDocument'
 import type { EditorCompletionCatalog } from './completionCatalog'
 
@@ -187,9 +187,10 @@ interface CodeMirrorEditorProps {
    * the buffer is patched IN PLACE with the minimal line edits (caret,
    * history and folds survive) instead of ignoring it. Skipped while an
    * edit is still pending, which would be overwritten by the flush anyway.
+   * `html-projection` retains source formatting while syncing HTML values.
    * Such patches never re-enter `onChange`.
    */
-  syncValue?: boolean
+  syncValue?: ValueSyncMode
   /** Show the lint marker gutter column (diagnostics stay inline without it). */
   lintGutter?: boolean
   /** Formatting (Shift-Alt-F or `format()`) failed — e.g. the document does not parse. */
@@ -204,9 +205,6 @@ export interface CodeMirrorEditorHandle {
   format: () => Promise<FormatResult>
   runCssCommand: (command: CssToolbarCommand) => CssToolbarResult
 }
-
-/** Marks a transaction that brings the buffer up to date with `value` — not an author edit. */
-const valueSync = Annotation.define<boolean>()
 
 const rejectAllChanges = EditorState.changeFilter.of(() => false)
 const readOnlyExtensions = [EditorState.readOnly.of(true), EditorView.editable.of(false), rejectAllChanges]
@@ -430,12 +428,28 @@ export default function CodeMirrorEditor({
     onFormatErrorRef.current = onFormatError
   }, [onFormatError])
 
+  // useCallback kept: stable identity for the [flush] useEffect dep array (exhaustive-deps).
+  // Flush pending content to the store immediately (called on doc switch).
+  const flush = useCallback(() => {
+    if (timerRef.current) {
+      clearTimeout(timerRef.current)
+      timerRef.current = null
+    }
+    if (pendingChangeRef.current !== null) {
+      // Flush-on-switch: persist pending edit before unmounting.
+      const { content, info } = pendingChangeRef.current
+      pendingChangeRef.current = null
+      onChangeRef.current(content, info)
+    }
+  }, [])
+
   const format = async (): Promise<FormatResult> => {
     const view = viewRef.current
     if (!view) return { ok: false, error: 'No document is open' }
     if (!isFormattableLanguage(language)) return { ok: false, error: 'This document type cannot be formatted' }
     const result = await formatDocument(view, language)
     if (!result.ok) onFormatErrorRef.current?.(result.error)
+    else flush()
     return result
   }
   const formatRef = useRef(format)
@@ -452,21 +466,6 @@ export default function CodeMirrorEditor({
   }), [language])
   const cssContextHandlerRef = useRef(onCssContextChange)
   useEffect(() => { cssContextHandlerRef.current = onCssContextChange }, [onCssContextChange])
-
-  // useCallback kept: stable identity for the [flush] useEffect dep array (exhaustive-deps).
-  // Flush pending content to the store immediately (called on doc switch).
-  const flush = useCallback(() => {
-    if (timerRef.current) {
-      clearTimeout(timerRef.current)
-      timerRef.current = null
-    }
-    if (pendingChangeRef.current !== null) {
-      // Flush-on-switch: persist pending edit before unmounting.
-      const { content, info } = pendingChangeRef.current
-      pendingChangeRef.current = null
-      onChangeRef.current(content, info)
-    }
-  }, [])
 
   // Mount/destroy CM6 view when docKey changes (document switch).
   //
@@ -509,6 +508,13 @@ export default function CodeMirrorEditor({
               },
             },
           ])),
+          EditorView.domEventHandlers({
+            blur: () => {
+              // Commit before another inspector control changes the same node.
+              flush()
+              return false
+            },
+          }),
           basicSetup,
           ...getLanguageExtensions(language),
           ...(typeScriptClient && filePath
@@ -665,9 +671,7 @@ export default function CodeMirrorEditor({
     if (!syncValue) return
     const view = viewRef.current
     if (!view || pendingChangeRef.current !== null) return
-    const current = view.state.doc.toString()
-    if (current === value) return
-    view.dispatch({ changes: documentChanges(current, value), annotations: [valueSync.of(true)] })
+    syncEditorValue(view, value, syncValue)
   }, [value, syncValue])
 
   useEffect(() => {
