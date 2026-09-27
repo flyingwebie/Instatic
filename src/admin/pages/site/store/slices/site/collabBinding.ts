@@ -39,6 +39,7 @@ import {
   createCollabDocSet,
   dataMap,
   encodeCollabDocId,
+  isSiteDocId,
   LOCAL_ORIGIN,
   metaMap,
   parseCollabDocId,
@@ -53,11 +54,12 @@ import {
   seedSiteDoc,
   SEED_ORIGIN,
   shellMap,
-  SITE_DOC_ID,
+  siteDocId,
   treeMap,
   type CollabDocSet,
 } from '@core/collab'
 import { assembleSiteFromShell } from './collabSiteAssembly'
+import { allDocIdsForSite, collabBranchId, notifyCollabBranchGone } from './collabBranch'
 import type { EditorStoreApi } from '@site/store/types'
 import { pruneCanvasSelectionDraft } from '../selectionSlice'
 import type { Awareness } from 'y-protocols/awareness'
@@ -145,7 +147,7 @@ export function onCollabProviderChange(listener: () => void): () => void {
 // ---------------------------------------------------------------------------
 
 function undoScopesFor(docId: string, doc: Y.Doc): Y.Map<unknown>[] {
-  return docId === SITE_DOC_ID
+  return isSiteDocId(docId)
     ? [shellMap(doc), rostersMap(doc)]
     : [treeMap(doc), metaMap(doc), dataMap(doc)]
 }
@@ -275,7 +277,9 @@ export function applyLocalSitePatches(
   const before = new Map<string, number>()
   for (const [docId, entry] of managed) before.set(docId, entry.manager.undoStack.length)
 
-  const touched = applySitePatchesToDocs(patches, preSite, nextSite, decidingDocSet, LOCAL_ORIGIN)
+  const touched = applySitePatchesToDocs(
+    patches, preSite, nextSite, decidingDocSet, LOCAL_ORIGIN, collabBranchId(),
+  )
   alignedSiteRef = nextSite
   if (touched.length === 0) return { accepted: true }
 
@@ -390,7 +394,7 @@ function flushProjections(): void {
   const batch = [...pendingProjections]
   pendingProjections.clear()
   // Site doc last — it assembles rows the row projections just refreshed.
-  batch.sort((a, b) => (a === SITE_DOC_ID ? 1 : 0) - (b === SITE_DOC_ID ? 1 : 0))
+  batch.sort((a, b) => (isSiteDocId(a) ? 1 : 0) - (isSiteDocId(b) ? 1 : 0))
   for (const id of batch) projectDocIntoStore(id)
 }
 
@@ -438,6 +442,7 @@ function projectDocIntoStore(docId: string): void {
     const assembled = assembleSiteFromShell({
       site,
       projected,
+      branchId: collabBranchId(),
       rowFromDoc,
       // A roster member with an empty doc: a peer created it. Bind it; the
       // whenSynced hook re-assembles the site once its content arrives.
@@ -495,15 +500,6 @@ function projectDocIntoStore(docId: string): void {
 // Lifecycle + provider connection
 // ---------------------------------------------------------------------------
 
-function allDocIdsForSite(site: SiteDocument): string[] {
-  return [
-    SITE_DOC_ID,
-    ...site.pages.map((p) => encodeCollabDocId({ kind: 'page', rowId: p.id })),
-    ...site.visualComponents.map((vc) => encodeCollabDocId({ kind: 'component', rowId: vc.id })),
-    ...site.layouts.map((l) => encodeCollabDocId({ kind: 'layout', rowId: l.id })),
-  ]
-}
-
 /**
  * Reset the doc world to mirror a freshly loaded site (or nothing). In
  * detached mode the docs are seeded locally; in connected mode every doc
@@ -537,23 +533,25 @@ export function resetCollabDocsFromSite(site: SiteDocument | null): void {
 }
 
 function seedDetachedDocs(site: SiteDocument): void {
-  const siteDoc = docs.ensure(SITE_DOC_ID)
+  const branchId = collabBranchId()
+  const shellDocId = siteDocId(branchId)
+  const siteDoc = docs.ensure(shellDocId)
   seedSiteDoc(siteDoc, site)
-  ensureManaged(SITE_DOC_ID, siteDoc)
+  ensureManaged(shellDocId, siteDoc)
   for (const page of site.pages) {
-    const docId = encodeCollabDocId({ kind: 'page', rowId: page.id })
+    const docId = encodeCollabDocId({ kind: 'page', branchId, rowId: page.id })
     const doc = docs.ensure(docId)
     seedPageDoc(doc, page)
     ensureManaged(docId, doc)
   }
   for (const vc of site.visualComponents) {
-    const docId = encodeCollabDocId({ kind: 'component', rowId: vc.id })
+    const docId = encodeCollabDocId({ kind: 'component', branchId, rowId: vc.id })
     const doc = docs.ensure(docId)
     seedComponentDoc(doc, vc)
     ensureManaged(docId, doc)
   }
   for (const layout of site.layouts) {
-    const docId = encodeCollabDocId({ kind: 'layout', rowId: layout.id })
+    const docId = encodeCollabDocId({ kind: 'layout', branchId, rowId: layout.id })
     const doc = docs.ensure(docId)
     seedLayoutDoc(doc, layout)
     ensureManaged(docId, doc)
@@ -588,7 +586,7 @@ function bindDocThroughProvider(docId: string): void {
     // per row doc sync ran the full shell projection and its store fan-out
     // per page on load — seconds of blocked main thread and hundreds of
     // megabytes of garbage on a large site, enough to crash the renderer.
-    if (docId !== SITE_DOC_ID && !storeHoldsRow(docId)) scheduleProjection(SITE_DOC_ID)
+    if (!isSiteDocId(docId) && !storeHoldsRow(docId)) scheduleProjection(siteDocId(collabBranchId()))
   })
 }
 
@@ -612,6 +610,13 @@ export function connectCollabProvider(next: CollabProvider): void {
   })
   detachProviderReset?.()
   detachProviderReset = next.onReset((docId, reason) => {
+    if (reason === 'gone') {
+      // The branch is gone: leave it (rebinding would only be refused again).
+      next.unbind(docId)
+      const parsed = parseCollabDocId(docId)
+      if (parsed) notifyCollabBranchGone(parsed.branchId)
+      return
+    }
     collabResetToast(reason)
     const current = storeApi?.getState()
     if (

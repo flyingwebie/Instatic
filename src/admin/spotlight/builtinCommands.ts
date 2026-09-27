@@ -39,6 +39,7 @@ import { getAiAssistantCommands } from './commands/aiAssistant'
 import { getImportHtmlCommands } from './commands/importHtml'
 import { getSiteImportCommands } from './commands/siteImport'
 import { getSiteExportCommands } from './commands/siteExport'
+import { getBranchesCommands } from './commands/branches'
 
 /**
  * Module-level cache of the STATIC built-in command list. Each
@@ -86,6 +87,7 @@ export function getAllCommands(): Command[] {
       ...getImportHtmlCommands(),
       ...getSiteImportCommands(),
       ...getSiteExportCommands(),
+      ...getBranchesCommands(),
       ...getAiAssistantCommands(),
       ...getHelpCommands(),
     ]

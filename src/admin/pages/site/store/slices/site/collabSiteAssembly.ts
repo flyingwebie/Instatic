@@ -29,6 +29,8 @@ export interface SiteAssemblyInput {
   /** The store's current site — the source of every row kept by reference. */
   site: SiteDocument
   projected: ReturnType<typeof projectSiteDoc>
+  /** The collab branch whose row docs the rosters name. */
+  branchId: string
   /** A row projected from its (content-bearing) doc, or null while it is empty. */
   rowFromDoc: (docId: string) => Page | VisualComponent | SavedLayout | null
   /** Bind a roster member's doc on demand; its sync completes the assembly later. */
@@ -44,6 +46,7 @@ export interface AssembledSite {
 export function assembleSiteFromShell({
   site,
   projected,
+  branchId,
   rowFromDoc,
   bindRowDoc,
 }: SiteAssemblyInput): AssembledSite | null {
@@ -76,7 +79,7 @@ export function assembleSiteFromShell({
         rows.push(known)
         continue
       }
-      const rowDocId = encodeCollabDocId({ kind, rowId: id })
+      const rowDocId = encodeCollabDocId({ kind, branchId, rowId: id })
       const fresh = rowFromDoc(rowDocId) as T | null
       if (fresh) {
         rows.push(fresh)
