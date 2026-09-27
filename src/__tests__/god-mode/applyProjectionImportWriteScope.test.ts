@@ -10,6 +10,7 @@ import { beforeEach, describe, expect, it } from 'bun:test'
 import * as Y from 'yjs'
 import { useEditorStore } from '@site/store/store'
 import { collabDocFor } from '@site/store/slices/site/collabBinding'
+import { MAIN_BRANCH_ID } from '@core/branches'
 import { encodeCollabDocId, treeMap } from '@core/collab'
 import { registry } from '@core/module-engine'
 import { renderNode, type RenderConfig } from '@core/publisher'
@@ -39,7 +40,7 @@ function importEdited(rootId: string, html: string) {
 }
 
 function pageDoc(): Y.Doc {
-  return collabDocFor(encodeCollabDocId({ kind: 'page', rowId: page().id }))!
+  return collabDocFor(encodeCollabDocId({ kind: 'page', branchId: MAIN_BRANCH_ID, rowId: page().id }))!
 }
 
 function structCount(doc: Y.Doc): number {

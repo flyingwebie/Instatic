@@ -3,9 +3,16 @@ import { createDbClient } from './db'
 import { runMigrations } from './db/runMigrations'
 import { syncSystemRoles } from './repositories/roles'
 import { readServerConfig } from './config'
+import { configureNpmRegistryUrl } from './registry/config'
 import { DEV_ORIGIN_ALLOWLIST, configurePublicOrigins, configureTrustedProxyCidrs, stampSocketIp } from './auth/security'
 import { applySecurityHeaders } from './securityHeaders'
 import { startConversationPurgeTick } from './ai/boot'
+import { unsupportedBunWarning } from './bunVersion'
+
+// Before anything that could fail for a version-related reason, say which
+// Bun this is when it is not one a release was tested on. Boot continues.
+const bunWarning = unsupportedBunWarning(Bun.version)
+if (bunWarning) console.warn(bunWarning)
 
 await import('./richtextSanitizer')
 const { handleServerRequest } = await import('./router')
@@ -18,6 +25,7 @@ const { SITE_SOCKET_PATH, createCollabSocketLayer, handleCollabSocketUpgrade } =
 const config = readServerConfig()
 configureTrustedProxyCidrs(config.trustedProxyCidrs)
 configurePublicOrigins(config.publicOrigins)
+configureNpmRegistryUrl(config.npmRegistryUrl)
 const { db, migrations } = createDbClient(config.databaseUrl)
 await runMigrations(db, migrations)
 // System role sync runs after migrations on every boot — the Owner row's
@@ -135,6 +143,7 @@ const server = Bun.serve({
         staticDir: config.staticDir,
         uploadsDir: config.uploadsDir,
         databaseUrl: config.databaseUrl,
+        collabRelay,
       })
       for (const [k, v] of Object.entries(cors)) {
         res.headers.set(k, v)

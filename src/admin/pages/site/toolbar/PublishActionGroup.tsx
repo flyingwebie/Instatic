@@ -1,5 +1,7 @@
+import type { ReactNode } from 'react'
 import { Button } from '@ui/components/Button'
 import { SplitButton, type SplitButtonMenuItem } from '@ui/components/SplitButton'
+import { Tooltip } from '@ui/components/Tooltip'
 import { cn } from '@ui/cn'
 import type { IconComponent } from 'pixel-art-icons/types'
 import styles from './Toolbar.module.css'
@@ -19,10 +21,16 @@ interface PublishActionGroupProps {
    * whose only resolution lives in a panel they have to know to open.
    */
   onStatusActivate?: () => void
-  statusTooltip?: string
+  /**
+   * Hover detail for the status text. The status is often the only enabled
+   * thing in the group — a blocked publish disables the button — so it has to
+   * carry the explanation too.
+   */
+  statusTooltip?: ReactNode
   publishLabel: string
   publishAriaLabel: string
-  publishTitle: string
+  /** Rich node allowed: the runtime gate shows the actual diagnostics here. */
+  publishTitle: ReactNode
   publishState?: PublishActionState
   publishDisabled?: boolean
   publishBusy?: boolean
@@ -67,18 +75,22 @@ export function PublishActionGroup({
           <span className={styles.publishActionStatusDot} aria-hidden="true" />
           {statusLabel}
         </Button>
-      ) : statusLabel ? (
-        <span
-          role="status"
-          aria-live="polite"
-          aria-label={statusAriaLabel ?? statusLabel}
-          className={styles.publishActionStatus}
-          data-tone={statusTone}
-        >
-          <span className={styles.publishActionStatusDot} aria-hidden="true" />
-          {statusLabel}
-        </span>
-      ) : null}
+      ) : statusLabel ? (() => {
+        const status = (
+          <span
+            role="status"
+            aria-live="polite"
+            aria-label={statusAriaLabel ?? statusLabel}
+            className={styles.publishActionStatus}
+            data-tone={statusTone}
+            data-has-detail={statusTooltip ? 'true' : undefined}
+          >
+            <span className={styles.publishActionStatusDot} aria-hidden="true" />
+            {statusLabel}
+          </span>
+        )
+        return statusTooltip ? <Tooltip content={statusTooltip} size="wide">{status}</Tooltip> : status
+      })() : null}
 
       <SplitButton
         variant={publishState === 'error' ? 'destructive' : 'primary'}

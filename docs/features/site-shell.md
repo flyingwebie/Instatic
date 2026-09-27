@@ -218,6 +218,24 @@ The worker is editor assistance only: esbuild remains the authoritative canvas
 and publish compiler, and semantic type errors do not replace the publish-time
 runtime validation gate.
 
+#### Where build failures surface
+
+`useRuntimeScriptDiagnostics()` posts the draft to be built and runs once, in
+`AdminCanvasLayout`. `summarizeRuntimeDiagnostics` (`@core/site-runtime`)
+groups the result per file, and `AdminCanvasEditorBody` publishes that summary
+through `RuntimeDiagnosticsContext` so every surface reports the same build:
+
+- **The publish gate** blocks with "N code errors" and, on hover, lists each
+  failure with its file, position and message (`SiteDiagnosticsList`). The
+  status text carries the same tooltip as the button: a blocked publish
+  disables the button, leaving the status as the only thing left to hover.
+- **Site Explorer rows** carry a count badge on any script or stylesheet with
+  problems (`ProblemBadge`), whose tooltip shows that file's messages.
+- **The code editor** underlines them in place, via `codeMirrorDiagnostics`.
+
+A count with no detail is not actionable, which is why the gate and the tree
+both carry the messages rather than only the number.
+
 ### Site Explorer organization — `SiteExplorerOrganization`
 
 Site Explorer organization is split by whether a section owns URL/file paths.
@@ -301,7 +319,7 @@ type SitePackageJson = {
 
 The CMS supports plugins that ship their own npm deps and runtime imports (e.g. `three`). When a site declares a dependency, `bun install` runs against a workspace keyed by the hash of its exact locked versions, under the runtime cache root (`RUNTIME_CACHE_DIR`; default `instatic-runtime-cache` in the OS temp dir — never under `UPLOADS_DIR`, which is served publicly), and the server serves the installed packages at `/_instatic/runtime/cache/<hash>/...`. A workspace counts as installed only when its completion sentinel exists **and** every locked package's `package.json` is still on disk: temp cleaners delete package files by age (Bun keeps the original mtimes of packages it clones from its global cache) while leaving directories and the sentinel behind, and trusting the sentinel alone made publish validation fail with a bare `Could not resolve "<package>"` for a declared dependency. A reaped workspace is removed and reinstalled on demand (`server/publish/runtime/dependencyCache.ts`, gated by `src/__tests__/server/runtimeDependencies.test.ts`). The cache layout is owned by `server/publish/runtime/`.
 
-The Site → Dependencies panel edits this `package.json`. Saving triggers a `bun install` and updates the runtime lock.
+The Site → Dependencies panel edits this `package.json`: it browses the npm registry through the server proxy and installs into `dependencies` (or `devDependencies`) with a caret range. Every manifest change is picked up by `useAutoResolveDependencies`, which resolves the lock and runs `bun install`. Panel and proxy: [`dependencies.md`](dependencies.md).
 
 ### `SiteRuntimeConfig`
 
@@ -506,8 +524,9 @@ one text node, simultaneously), presence is visible, and there is **no save
 UI at all**: the server persists continuously.
 
 **Document model** (`src/core/collab/`): one Yjs doc per logical row —
-`page:<rowId>`, `component:<rowId>`, `layout:<rowId>` — plus one `site:default`
-doc for the shell and the roster order. Page/component trees map to
+`page:<branch>:<rowId>`, `component:<branch>:<rowId>`, `layout:<branch>:<rowId>` —
+plus one `site:<branch>` doc per branch for the shell and the roster order
+(`site:main` for the live site; see [`branches.md`](branches.md)). Page/component trees map to
 `getMap('tree')` (`rootNodeId` + a `nodes` Y.Map of per-node Y.Maps: `props`
 as a Y.Map with the module's inline-text prop as Y.Text, nested
 `breakpointOverrides` Y.Maps, `children` as Y.Array; `parentId` is derived,
@@ -557,7 +576,11 @@ across all their docs via a routing-group stack.
 seeds them from the stored JSON (the server is the ONLY seeder — fixed seed
 clientID, so two clients can never build divergent initial histories),
 persists each doc's update blob to `collab_documents` AND the derived row
-JSON to `data_rows`/site on a short debounce (~800 ms), applies
+JSON to `data_rows`/site on a short debounce (~800 ms) — replacing only the
+cells the doc owns (`OWNED_CELLS` in `relayPersistence.ts`: title, slug, body
+and the template cells for pages; name, slug, body, params, classIds for
+components; name, slug, body, classes for layouts), so SEO, featured media,
+and plugin cells edited elsewhere survive every relay write — applies
 roster-driven soft-deletes, and RESETS docs whose row was written outside
 the relay (`rowWriteEvents.ts`) — clients rebind and reseed. The publish
 endpoint flushes the relay first so the baked snapshot includes edits still
@@ -579,7 +602,11 @@ and reuse the HTTP path's `validateSiteWriteDiff`/`validatePageWriteDiff` —
 one enforcement vocabulary on both transports (the validators live in
 `server/writePolicy/` for exactly that reason). Rejected updates never touch
 the authoritative doc; the sender gets a targeted reset that reverts its
-local fork. Two more socket-level defenses: per-frame payload caps (64 KB
+local fork. Every frame carries the doc's lineage (`generation`, minted
+when the relay seeds a doc): a write from a dead lineage is reset as
+`stale`, and the client provider holds local updates back until the first
+inbound frame names the lineage, then sends them as one update — so a row
+created and placed inside the bind round trip is never refused. Two more socket-level defenses: per-frame payload caps (64 KB
 awareness / 4 MB sync, plus the transport `maxPayloadLength`) drop oversized
 frames before any decode work, and every awareness frame is decoded and
 checked against the session — a state claiming another user's identity
@@ -598,18 +625,15 @@ they commit: the `ColorInput` primitive throttles picker-drag change events
 so a color drag cannot fill the socket backlog past the provider's send
 gate.
 
-In production the socket is same-origin. Under `vite dev` it is NOT: the
-socket dials the CMS port directly, bypassing the Vite proxy
-(`src/admin/pages/site/collab/socketUrl.ts`). `scripts/vite.ts` runs Vite
-inside Bun, and Bun's `node:http` ClientRequest never emits `'upgrade'`, so a
-proxied 101 takes the non-upgrade fallback: the browser socket hangs in
-`readyState 0` forever — never opening, never closing, so the provider's
-reconnect path is never even reached — and when that connection later ends,
-the proxy's `socket.destroySoon()` call (an API Bun's socket lacks) throws
-uncaught and kills the whole dev process. Only the PORT is swapped; the
-hostname is preserved, because the session cookie is `SameSite=Lax` and
-`localhost` ↔ `127.0.0.1` is a cross-site handshake that would drop it.
-`devWorkflow.test.ts` gates the proxy against re-enabling `ws` forwarding.
+The socket is same-origin in production and under `vite dev` alike: the
+Vite proxy forwards the upgrade to the CMS (`ws: true` on the `/admin/api`
+entry in `vite.config.ts`), so the provider simply dials
+`window.location.host` + `SITE_SOCKET_PATH`. Before Bun 1.4.1 the
+`node:http` client Vite runs on inside Bun never emitted `'upgrade'`, so the
+socket had to dial the CMS port directly and the dev process could be killed
+by a `socket.destroySoon()` call Bun lacked; 1.4.1 fixed both, and
+`devWorkflow.test.ts` now gates the proxy the other way, requiring `ws`
+forwarding to stay on.
 
 **Presence** (`src/admin/pages/site/collab/awarenessState.ts`; per-frame
 publishers in `collab/framePresencePublishers.ts`, rendering in
@@ -703,7 +727,7 @@ createFile('src/styles/analytics.css', 'style', '/* ... */')
 
 ### Declare a site dependency
 
-Site → Dependencies panel edits `packageJson.dependencies`:
+Site → Dependencies panel (search the registry, open the package, Install) writes `packageJson.dependencies`; the same happens when a runtime-script diagnostic's **Add** action runs or a module declares a dependency:
 
 ```jsonc
 {
@@ -711,7 +735,7 @@ Site → Dependencies panel edits `packageJson.dependencies`:
 }
 ```
 
-Save → server runs `bun install` in the per-site workspace → `runtime.dependencyLock` updates → the publisher emits a `<script type="importmap">` mapping `three` to `/_instatic/runtime/cache/<hash>/three/build/three.module.js`.
+The auto-resolve hook posts the manifest to `/runtime/dependencies/resolve` → the server resolves versions through `server/registry/client.ts` and runs `bun install` in the per-site workspace → `runtime.dependencyLock` updates → the publisher emits a `<script type="importmap">` mapping `three` to `/_instatic/runtime/cache/<hash>/three/build/three.module.js`.
 
 A plugin canvas module can then `import * as THREE from 'three'` and it resolves at runtime.
 

@@ -23,7 +23,8 @@ import type {
   CollabResetListener,
 } from '@site/collab/collabProvider'
 import { useEditorStore } from '@site/store/store'
-import { parseCollabDocId, seedPageDoc, seedSiteDoc } from '@core/collab'
+import { MAIN_BRANCH_ID } from '@core/branches'
+import { encodeCollabDocId, MAIN_SITE_DOC_ID, parseCollabDocId, seedPageDoc, seedSiteDoc } from '@core/collab'
 import type { Page, SiteDocument } from '@core/page-tree'
 import { makeNode, makePage, makeSite } from '../fixtures'
 import '@modules/base/index'
@@ -117,20 +118,20 @@ describe('connectCollabProvider — site re-assembly scope', () => {
     const provider = seededDeferredProvider(server)
     connectCollabProvider(provider)
 
-    provider.release('site:default')
+    provider.release(MAIN_SITE_DOC_ID)
     await nextTask()
     expect(shellReplacements).toBe(1)
     // The unknown roster member was bound on demand but is not synced yet.
     expect(useEditorStore.getState().site!.pages.map((p) => p.id)).toEqual(['p1', 'p2', 'p3', 'p4'])
 
     for (const id of ['p1', 'p2', 'p3', 'p4']) {
-      provider.release(`page:${id}`)
+      provider.release(encodeCollabDocId({ kind: 'page', branchId: MAIN_BRANCH_ID, rowId: id }))
       await nextTask()
     }
     expect(shellReplacements).toBe(1)
     expect(useEditorStore.getState().site!.pages.map((p) => p.id)).toEqual(['p1', 'p2', 'p3', 'p4'])
 
-    provider.release('page:p-extra')
+    provider.release(encodeCollabDocId({ kind: 'page', branchId: MAIN_BRANCH_ID, rowId: 'p-extra' }))
     await nextTask()
     expect(shellReplacements).toBe(2)
     expect(useEditorStore.getState().site!.pages.map((p) => p.id)).toEqual(['p1', 'p2', 'p3', 'p4', 'p-extra'])
