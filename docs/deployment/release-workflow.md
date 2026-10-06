@@ -2,7 +2,7 @@
 
 This maintainer guide covers publishing Instatic Docker images.
 
-End users do not need this page to deploy Instatic. They follow [railway.md](railway.md), [render.md](render.md), [vps.md](vps.md), or [docker-image.md](docker-image.md). Maintainers use this page to keep `ghcr.io/corebunch/instatic` release tags aligned with source tags and deployment templates.
+End users do not need this page to deploy Instatic. They follow [railway.md](railway.md), [render.md](render.md), [vps.md](vps.md), or [docker-image.md](docker-image.md). Maintainers use this page to keep their repository's GHCR release tags aligned with source tags and deployment templates. Upstream publishes `ghcr.io/corebunch/instatic`; this fork publishes `ghcr.io/flyingwebie/instatic`.
 
 ---
 
@@ -26,17 +26,47 @@ Release flow:
 6. GitHub Actions pushes the semver image, minor image, and `latest` to GHCR.
 7. GitHub Actions creates the GitHub Release and uploads the release bundle.
 
-## Pre-Tag Template Updates
+## Publishing from flyingwebie/Instatic
 
-Before tagging a release, update the package/changelog version and every checked-in deployment surface that intentionally pins the release image:
+The source of truth is `.github/workflows/release.yml`: it runs when a `v*.*.*` tag is pushed. Merging a PR into `main` does not publish a Docker image, and updating the plugin ZIP does not update the running Instatic server.
+
+To publish `v0.0.22`, first merge the `package.json` version update and `CHANGELOG.md` release notes into `main`. The plugin publication support and fork Coolify template must also be on `main` before tagging.
+
+From a checkout whose `origin` is `https://github.com/flyingwebie/Instatic.git`, run:
+
+```sh
+git fetch origin main --tags
+git show origin/main:package.json
+# Confirm the version is 0.0.22 before creating the release tag.
+git tag -a v0.0.22 origin/main -m "Instatic 0.0.22"
+git push origin v0.0.22
+```
+
+Tagging `origin/main` publishes the merged source even if a different task branch is checked out. Push only the new tag; do not push the local task branch to `main`.
+
+Open the repository's [Release workflow](https://github.com/flyingwebie/Instatic/actions/workflows/release.yml). Wait for **Verify** and **Publish GHCR Image** to succeed. The image job publishes:
 
 ```txt
-package.json
-CHANGELOG.md
+ghcr.io/flyingwebie/instatic:0.0.22
+ghcr.io/flyingwebie/instatic:0.0
+ghcr.io/flyingwebie/instatic:latest
+```
+
+The remaining jobs upload the install bundle and runnable server artifacts to the GitHub Release. Let the whole workflow finish before treating the release as complete.
+
+For an existing Coolify Postgres installation, use [`docker-compose.coolify.flyingwebie.yml`](../../docker-compose.coolify.flyingwebie.yml) in the same resource, retaining its volumes, credentials, and secret key. Set `INSTATIC_IMAGE=ghcr.io/flyingwebie/instatic:0.0.22`, pull the image, and redeploy. Once the new core container is healthy, reload the admin and retry the SEO/GEO plugin ZIP. See [coolify.md](coolify.md) for the deployment details.
+
+## Pre-Tag Template Updates
+
+Before tagging a release, update `package.json` and `CHANGELOG.md` to the release version. For an upstream release, also update the checked-in deployment guides that intentionally pin the CoreBunch image:
+
+```txt
 docs/deployment/README.md
 docs/deployment/docker-image.md
 docs/deployment/railway.md
 ```
+
+Keep those upstream image examples at an existing upstream version when publishing a fork release. The release bundle rewrites its own copies to the fork's image owner and tagged version.
 
 The checked-in Render Blueprints use `ghcr.io/corebunch/instatic:latest` for new one-click installs. `scripts/build-release-bundle.ts` rewrites the release-bundle copies to the semver image tag automatically.
 
@@ -168,7 +198,7 @@ The first release targets `linux/amd64` because QEMU-based arm64 publishing made
 
 ## Image Registry
 
-GHCR (`ghcr.io/corebunch/instatic`) is the only published registry. It is produced directly by the release workflow, is public, and has no aggressive anonymous pull-rate limits — use it in every Compose file, template, and deployment guide. There is no Docker Hub mirror; if one is ever wanted, add a `Mirror To Docker Hub` job plus `DOCKERHUB_USERNAME` / `DOCKERHUB_TOKEN` repository secrets.
+GHCR is the published registry. The release workflow uses the repository owner's namespace: `ghcr.io/corebunch/instatic` for upstream and `ghcr.io/flyingwebie/instatic` for this fork. Deployment templates must select the same namespace as the source being deployed. There is no Docker Hub mirror; if one is ever wanted, add a `Mirror To Docker Hub` job plus `DOCKERHUB_USERNAME` / `DOCKERHUB_TOKEN` repository secrets.
 
 ## GHCR Visibility
 
@@ -187,5 +217,6 @@ docker pull ghcr.io/corebunch/instatic:latest
 - [docker-image.md](docker-image.md) — runtime image contract
 - [render.md](render.md) — Render Blueprint contract
 - `Dockerfile` — image build
+- `.github/workflows/release.yml` — tag trigger, verification, and image/artifact publishing
 - `compose.prod.yml` — production image consumer
 - `docs/deployment/render/sqlite/render.yaml`, `docs/deployment/render/postgres/render.yaml` — Render Blueprint templates
