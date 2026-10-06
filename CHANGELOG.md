@@ -6,6 +6,13 @@ This project is pre-1.0. Breaking changes may appear in minor or patch releases 
 
 ## Unreleased
 
+## 0.0.22 - 2026-10-06
+
+### Plugins and Coolify
+
+- Added permission-gated published-content reads and site-level public routes for plugins. The SEO/GEO plugin can read published pages, generate discovery files, and refresh published HTML without accessing drafts.
+- Added `docker-compose.coolify.flyingwebie.yml` for deployments using `ghcr.io/flyingwebie/instatic`, with the same service and volume names as the standard Postgres Coolify template.
+
 ### Upstream sync (CoreBunch/Instatic 0.0.19 and 0.0.20)
 
 Upstream released these as 0.0.19 (2026-09-10) and 0.0.20 (2026-09-13); the fork already used those numbers, so the notes land here.
