@@ -102,7 +102,7 @@ SQLite installs also need the SQLite database file on persistent storage. On pla
 | [railway.md](railway.md) | Railway templates for SQLite and Postgres |
 | [render.md](render.md) | Render Blueprint templates for SQLite and Postgres |
 | [vps.md](vps.md) | Docker Compose on a VPS, both SQLite and Postgres |
-| [coolify.md](coolify.md) | Coolify Compose templates for SQLite and Postgres |
+| [coolify.md](coolify.md) | Coolify Compose templates for SQLite/Postgres and the flyingwebie Postgres image |
 | [docker-image.md](docker-image.md) | Generic Docker image contract and `docker run` examples |
 | [tls-caddy.md](tls-caddy.md) | Caddy TLS overlay for VPS Compose installs |
 | [backup-restore.md](backup-restore.md) | Database and uploads backup/restore |
@@ -115,5 +115,5 @@ SQLite installs also need the SQLite database file on persistent storage. On pla
 - `server/index.ts` — migrations, media storage, and server boot
 - `Dockerfile` — production image contract
 - `compose.prod.yml`, `compose.sqlite.yml`, `compose.tls.yml`, `compose.build.yml` — VPS Compose files
-- `docker-compose.coolify.yml`, `docker-compose.coolify.sqlite.yml` — Coolify Compose templates
+- `docker-compose.coolify.yml`, `docker-compose.coolify.sqlite.yml`, `docker-compose.coolify.flyingwebie.yml` — Coolify Compose templates
 - `docs/deployment/render/sqlite/render.yaml`, `docs/deployment/render/postgres/render.yaml` — Render Blueprint templates

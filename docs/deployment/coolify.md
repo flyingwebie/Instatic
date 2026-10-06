@@ -12,8 +12,23 @@ Coolify is a self-hosted PaaS: it manages Docker on your own VPS, runs a Traefik
 |---|---|---|---|
 | Postgres | `docker-compose.coolify.yml` | Bundled `postgres:16` service | `instatic-uploads`, `instatic-postgres-data` |
 | SQLite | `docker-compose.coolify.sqlite.yml` | SQLite file in a volume | `instatic-uploads`, `instatic-data` |
+| flyingwebie Postgres | `docker-compose.coolify.flyingwebie.yml` | Bundled `postgres:16` service | `instatic-uploads`, `instatic-postgres-data` |
 
-Both pull `ghcr.io/corebunch/instatic:latest`, expose the app on container port `3001`, and let Coolify generate every secret. There is nothing to fill in by hand before the first deploy — assign a domain and press Deploy.
+The standard Postgres/SQLite templates pull `ghcr.io/corebunch/instatic:latest`. The flyingwebie template pulls `ghcr.io/flyingwebie/instatic:latest`. All expose the app on container port `3001` and let Coolify generate every secret. Assign a domain and press Deploy for a new installation.
+
+## Deploy the flyingwebie repository image
+
+Use `docker-compose.coolify.flyingwebie.yml` for a Coolify Postgres deployment of this fork. Its raw file URL is:
+
+```txt
+https://raw.githubusercontent.com/flyingwebie/Instatic/refs/heads/main/docker-compose.coolify.flyingwebie.yml
+```
+
+This Compose file pulls the published image; it does not build the repository on the Coolify server. The release workflow publishes images under `GITHUB_REPOSITORY_OWNER`, so a version tag in `flyingwebie/Instatic` builds and publishes `ghcr.io/flyingwebie/instatic`. Publish a fresh core release containing the desired changes before redeploying. Merging into `main` alone does not update the image's `latest` tag. See [release-workflow.md](release-workflow.md).
+
+When switching an existing standard Postgres resource, load the new definition into that same Coolify resource. It uses the same `instatic`/`postgres` service names and `instatic-uploads`/`instatic-postgres-data` volume names. Retain the existing generated credentials and secret key. If `INSTATIC_IMAGE` already contains a CoreBunch image, set it to `ghcr.io/flyingwebie/instatic:latest` (or a published fork version tag), because an explicit override takes precedence over the new default.
+
+After saving, use **Pull Latest Images & Restart**, wait for the app to become healthy, and reload the admin page. Coolify stores pasted Compose definitions on the resource; changing a repository file does not update an already-pasted definition automatically.
 
 ## Why Coolify Needs Its Own Compose Files
 
@@ -70,7 +85,7 @@ Switching is an export/import, not a config change. Both engines run the same mi
 ## Setup
 
 1. **Create the resource.** In your project, add a resource of type **Docker Compose**. Point it at this repository, or choose the Empty variant and paste the file contents.
-2. **Set the Compose file path.** `docker-compose.coolify.yml` or `docker-compose.coolify.sqlite.yml`. The extension must match exactly or Coolify will not load the file. Leave Base Directory as `/`.
+2. **Set the Compose file path.** `docker-compose.coolify.yml`, `docker-compose.coolify.sqlite.yml`, or `docker-compose.coolify.flyingwebie.yml`. The extension must match exactly or Coolify will not load the file. Leave Base Directory as `/`.
 3. **Assign the domain to the `instatic` service.** This is the step that matters most — see below. Coolify then issues the certificate and routes `:443` to container port `3001`.
 4. **Deploy.** The first deploy pulls the image, runs every migration against the empty database, and reports healthy once `GET /health` answers.
 5. **Open `https://your-domain/admin`** and complete the setup wizard. It creates the site, the first owner account, and a starter homepage.
@@ -135,7 +150,7 @@ Back up the database *and* `instatic-uploads`; neither is recoverable from the o
 
 ## Updating
 
-The templates track `ghcr.io/corebunch/instatic:latest`. Redeploy in Coolify to pull the current image; migrations run automatically on the next boot.
+The standard templates track `ghcr.io/corebunch/instatic:latest`; the flyingwebie template tracks `ghcr.io/flyingwebie/instatic:latest`. Redeploy in Coolify to pull the selected repository's current image; migrations run automatically on the next boot.
 
 Pin a version for predictable upgrades by setting `INSTATIC_IMAGE` in the Coolify UI:
 
