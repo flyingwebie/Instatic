@@ -138,6 +138,7 @@ async function doInstall(): Promise<void> {
       Card: hostUiMod.Card,
       Checkbox: hostUiMod.Checkbox,
       Code: hostUiMod.Code,
+      pushToast: hostUiMod.pushToast,
       Delta: hostUiMod.Delta,
       EmptyState: hostUiMod.EmptyState,
       Heading: hostUiMod.Heading,

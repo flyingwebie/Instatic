@@ -547,7 +547,7 @@ const name = await api.cms.hooks.emit('sync.done', { /* … */ })
 // name === 'plugin.<your-plugin-id>.sync.done'
 ```
 
-**Host-emitted events** (the reserved core list, `CORE_HOOK_EVENTS` in `src/core/plugins/hookBus.ts`): `publish.before`, `publish.after`, `content.entry.created`, `content.entry.updated`, `content.entry.deleted`, `settings.changed`. **Filters**: `publish.html`, `publish.headers`, `content.entry.cells`.
+**Host-emitted events** (the reserved core list, `CORE_HOOK_EVENTS` in `src/core/plugins/hookBus.ts`): `publish.before`, `publish.after`, `publication.changed`, `content.entry.created`, `content.entry.updated`, `content.entry.deleted`, `settings.changed`. **Filters**: `publish.html`, `publish.headers`, `content.entry.cells`.
 
 Every filter handler returns the same runtime value type it received. `src/core/plugins/hookBus.ts` checks each result before passing it to the next handler; a mismatched result keeps the previous value and logs the offending plugin ID. For example, `publish.html` returns a string and `content.entry.cells` returns an object, never `null`.
 
@@ -751,7 +751,7 @@ await bodyTree.replace(currentTree)
 // Cross-table
 await api.cms.content.search('hello world', 25)
 const snap = await api.cms.content.getPublishedSnapshot(entryId)
-const { count } = await api.cms.content.republishAll()
+const { count } = await api.cms.content.republishAll({ origin: 'https://example.com' })
 ```
 
 `tables.create(input)` accepts the plugin-facing field projection, then maps it to the host's canonical `DataField` schema before storage. `richText` fields default to Markdown format, `select` / `multiSelect` option `value`s become stable option IDs, and `relation.targetTableSlug` must resolve to an existing table slug. `repeater` accepts a one-level `fields` schema made from ordinary authorable fields; nested relation slugs are resolved through the same gate, while recursive repeaters, `pageTree`, and `fieldSchema` item fields are rejected by the boundary schema.
@@ -1228,3 +1228,42 @@ export default definePlugin({
   - `src/__tests__/server/pluginVmDeadlines.test.ts` — hang hardening: top-level loops abort at load, overlapping evals keep their deadlines, runaway timer callbacks are interrupted, VM stacks survive with the `plugin:<id>` filename
   - `src/__tests__/server/pluginWorkerRpcTimeout.test.ts` — host-side RPC timeout: wedged workers are reset through the crash machinery instead of hanging callers
   - `src/admin/pages/plugins/utils/pluginEventStream.test.ts` — SSE frame validation: well-formed events dispatched, unknown-shape frames dropped with `console.warn`
+
+### Published content — requires `cms.publication.read`
+
+```js
+const batch = await api.cms.publication.list({ offset: 0, limit: 200 })
+const document = await api.cms.publication.render({
+  path: batch.routes[0].path,
+  origin: 'https://example.com',
+  revision: batch.revision,
+})
+// null when the route is no longer published.
+await api.cms.publication.refresh({ paths: batch.routes.map((route) => route.path), origin: 'https://example.com', revision: batch.revision })
+```
+
+`list()` returns `{version, revision, totalCount, routes}`. Each route carries `{path, id, kind, tableSlug, title, publishedAt, firstPublishedAt, revision}`. Paths encode Unicode and nested segments; the index page is `/`. Only actual active main public resolutions are listed: concrete pages and entries with published templates. Component/layout definitions, template-only pages, protected paths, draft slugs, draft cells, and preview branches are excluded. An entry revision also incorporates its published template snapshots.
+
+`render()` returns raw route-resolved HTML and public site metadata from the same snapshots used for visitors, using the supplied HTTP(S) origin. It applies published templates, Visual Components, slots, and deterministic bindings. It bypasses plugin filters, frontend injections, cookies, and request data, preventing recursion and private-fragment exports. Dynamic holes remain placeholders. It exposes no raw cell map or definition tree. Expected `revision` mismatches reject; paginate/render against one revision and verify it again before committing derived output.
+
+`refresh({ paths, origin, revision })` requires **both** `cms.publication.read` and `cms.hooks`, accepts at most 200 currently published paths, and re-applies the HTML pipeline to existing published versions. It writes active static HTML/CSS and invalidates dynamic HTML caches. It never publishes a draft or advances the content version, so previously baked hole shells remain valid. Refresh operations serialize with publication; file writes are atomic per path. `cms.content.republishAll({ origin })` uses this same refresh engine under its existing `cms.content.publish` grant.
+
+`publication.changed` emits asynchronously after the public version changes, with `{version}`. It covers full, entry, and scheduled publication plus retraction/route changes. Unlike `publish.after`, this is a publication-state notification rather than a per-render hook. Keep listeners short; batch expensive derivation through schedules or authenticated resumable routes.
+
+The `publish.html` context includes `siteId`, renderer `pageId`, published row `contentId`, `slug`, actual `urlPath`, and `publishVersion`, with optional `tableSlug`, `publishedAt`, and `firstPublishedAt`. For entries, `pageId` identifies the template and `contentId` identifies the entry; form tokens continue to use the template identity.
+
+### Plugin routes at the website root
+
+These anonymous GET routes require all three **granted** permissions: `cms.routes`, `cms.routes.public`, and `cms.routes.site`.
+
+```js
+api.cms.routes.site.get('/sitemap.xml', () => ({
+  __response: true, status: 200,
+  headers: { 'Content-Type': 'application/xml; charset=utf-8' },
+  body: sitemapXml,
+}))
+```
+
+Exact paths and a trailing wildcard are supported. Protected namespaces (`/admin`, `/uploads`, `/_instatic`, `/health`, `/.well-known`) cannot be intercepted, including encoded equivalents. Published pages, built-in endpoints, and assets win over site routes. Among plugin matches, exact/longer prefixes win; a 404 falls through. Different plugins cannot register the same pattern. Ordinary HEAD handling is inherited from the router. Use an authenticated runtime route for exports that should not be public.
+
+Admin apps can import `pushToast` from `@instatic/host-ui` for operation feedback, using the same global toast bus as first-party UI.

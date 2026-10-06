@@ -41,6 +41,11 @@ export interface RendererOutput {
   /** Identifies what was rendered, for the publish.html filter context. */
   pageId: string
   slug: string
+  urlPath: string
+  contentId?: string
+  tableSlug?: string
+  publishedAt?: string
+  firstPublishedAt?: string
   siteId: string
   /**
    * Sorted moduleIds whose published JS this page must load — already
@@ -142,7 +147,7 @@ export async function renderPublishedSnapshot(
     : undefined
 
   const rendered = await renderMergedTemplate(merged, snapshot, templateContext, ctx)
-  return { ...rendered, pageId: snapshot.pageRowId, slug: page.slug, siteId: snapshot.site.id }
+  return { ...rendered, pageId: snapshot.pageRowId, publishedAt: snapshot.publishedAt, firstPublishedAt: snapshot.firstPublishedAt, slug: page.slug, siteId: snapshot.site.id, urlPath: ctx.url?.pathname ?? (page.slug === 'index' ? '/' : '/' + page.slug) }
 }
 
 /**
@@ -167,7 +172,7 @@ export async function renderPublishedNotFound(
     : undefined
 
   const rendered = await renderMergedTemplate(merged, snapshot, templateContext, ctx)
-  return { ...rendered, pageId: page.id, slug: page.slug, siteId: snapshot.site.id }
+  return { ...rendered, pageId: page.id, slug: page.slug, siteId: snapshot.site.id, urlPath: ctx.url?.pathname ?? '/404' }
 }
 
 export async function renderPublishedDataRowTemplate(
@@ -203,5 +208,5 @@ export async function renderPublishedDataRowTemplate(
     ctx,
     readEntrySeoOverride(row.cells),
   )
-  return { ...rendered, pageId: merged.id, slug: merged.slug, siteId: snapshot.site.id }
+  return { ...rendered, pageId: merged.id, contentId: row.rowId, publishedAt: row.publishedAt, slug: merged.slug, siteId: snapshot.site.id, urlPath: ctx.url?.pathname ?? '/' + row.slug, tableSlug: row.tableSlug }
 }

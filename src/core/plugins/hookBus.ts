@@ -40,6 +40,7 @@ type CoreHookEvent =
   | 'content.entry.deleted'
   | 'publish.before'
   | 'publish.after'
+  | 'publication.changed'
 
 /** A plugin-emitted event name, always of the form `plugin.<pluginId>.<name>`. */
 type PluginScopedHookEvent = `plugin.${string}`

@@ -185,11 +185,12 @@ export async function runRouteInWorker(args: {
   pluginId: string
   method: string
   path: string
+  scope?: 'site'
   request: Request
   user: SerializedUser | null
 }): Promise<Response> {
   const entry = hostPlugins.get(args.pluginId)
-  const routeKey = `${args.method.toUpperCase()}:${normalizeRoutePath(args.path)}`
+  const routeKey = `${args.scope === 'site' ? 'SITE:' : ''}${args.method.toUpperCase()}:${normalizeRoutePath(args.path)}`
   const route = entry?.routes.get(routeKey)
   if (!route) return new Response('Plugin route not found', { status: 404 })
 

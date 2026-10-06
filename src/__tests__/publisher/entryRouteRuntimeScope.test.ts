@@ -48,7 +48,7 @@ function dbReturning(byPageId: Record<string, unknown>): DbClient {
     const pageId = String(params[0])
     const assets = byPageId[pageId]
     return assets
-      ? { rows: [{ row_id: pageId, site_json: makeSite(), runtime_assets_json: assets }], rowCount: 1 }
+      ? { rows: [{ row_id: pageId, published_at: '2026-01-01T00:00:00Z', first_published_at: '2026-01-01T00:00:00Z', site_json: makeSite(), runtime_assets_json: assets }], rowCount: 1 }
       : { rows: [], rowCount: 0 }
   }) as unknown as DbClient
   return fake

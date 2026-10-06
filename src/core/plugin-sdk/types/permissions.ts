@@ -15,6 +15,8 @@ export const PLUGIN_PERMISSION_VALUES = [
   // can flag the plugin as exposing public endpoints to the operator
   // before they approve installation.
   'cms.routes.public',
+  'cms.routes.site',
+  'cms.publication.read',
   'cms.hooks',
   // CMS content — read/write/publish/delete the host's content tables
   // (`data_tables` + `data_rows`) through the `api.cms.content.*` surface.

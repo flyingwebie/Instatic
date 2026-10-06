@@ -236,6 +236,7 @@ export async function renderBranchPreview(
       html: rendered.html,
       pageId: merged.id,
       slug: merged.slug,
+      urlPath: url.pathname,
       siteId: site.id,
       jsModuleIds: rendered.jsModuleIds.filter((id) => moduleJsMap.has(id)),
       publishVersion: getPublishVersion(),

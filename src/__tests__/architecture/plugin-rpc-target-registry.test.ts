@@ -51,6 +51,9 @@ function extractHandlerTargets(source: string): string[] {
  */
 const EXPECTED_TARGET_PERMISSIONS: Record<string, string> = {
   'cms.routes.register': 'cms.routes',
+  'cms.publication.list': 'cms.publication.read',
+  'cms.publication.render': 'cms.publication.read',
+  'cms.publication.refresh': 'cms.hooks',
   'cms.hooks.on': 'cms.hooks',
   'cms.hooks.filter': 'cms.hooks',
   'cms.hooks.emit': 'cms.hooks',

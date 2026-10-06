@@ -20,6 +20,8 @@ export const permissions = {
   // via `api.cms.routes.public.*`. Surfaced separately so the install
   // dialog can flag the plugin as exposing public endpoints.
   cmsRoutesPublic: 'cms.routes.public',
+  cmsRoutesSite: 'cms.routes.site',
+  cmsPublicationRead: 'cms.publication.read',
   cmsHooks: 'cms.hooks',
   // Unsandboxed admin-window code — required for `entrypoints.editor` and
   // app-kind admin pages. See `capabilities.ts` for the trust implications.

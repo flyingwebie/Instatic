@@ -115,6 +115,7 @@ globalThis.__buildApi = function buildApi() {
   }
 
   function on(event: unknown, listener: unknown) {
+    // Registration is host-validated; event provenance is enforced there.
     assertTargetPermission('cms.hooks.on')
     if (typeof listener !== 'function') throw new TypeError('Hook listener must be a function')
     const listenerId = __nextId('listener')
@@ -373,7 +374,34 @@ globalThis.__buildApi = function buildApi() {
       },
     },
     cms: {
+      publication: {
+        list: function (options: unknown) {
+          assertTargetPermission('cms.publication.list')
+          return call('cms.publication.list', [options || {}])
+        },
+        render: function (options: unknown) {
+          assertTargetPermission('cms.publication.render')
+          return call('cms.publication.render', [options])
+        },
+        refresh: function (options: unknown) {
+          assertTargetPermission('cms.publication.refresh')
+          assertPermission('cms.publication.read')
+          return call('cms.publication.refresh', [options])
+        },
+      },
       routes: {
+        site: {
+          get: function (path: unknown, handler: unknown) {
+            assertTargetPermission('cms.routes.register')
+            assertPermission('cms.routes.public')
+            assertPermission('cms.routes.site')
+            if (typeof handler !== 'function') throw new TypeError('Site route handler must be a function')
+            const normalized = normalizePath(path)
+            const routeKey = 'SITE:GET:' + normalized
+            globalThis.__plugin_handlers.routes[routeKey] = handler as BootstrapFn
+            return call('cms.routes.register', [{ method: 'GET', path: normalized, scope: 'site', access: { kind: 'public' }, routeKey: routeKey }])
+          },
+        },
         // Capability-gated routes — most common shape.
         // Usage: api.cms.routes.get('/path', 'content.manage', handler)
         get: makeRoute('GET'),
@@ -497,9 +525,9 @@ globalThis.__buildApi = function buildApi() {
           assertTargetPermission('cms.content.snapshot')
           return call('cms.content.snapshot', [String(entryId)])
         },
-        republishAll: function () {
+        republishAll: function (options: unknown) {
           assertTargetPermission('cms.content.republishAll')
-          return call('cms.content.republishAll', [])
+          return call('cms.content.republishAll', [options])
         },
       },
       media: {

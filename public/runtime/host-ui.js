@@ -21,6 +21,7 @@ if (!G) {
 }
 
 export const Alert = G.Alert
+export const pushToast = G.pushToast
 export const Bars = G.Bars
 export const Button = G.Button
 export const Card = G.Card

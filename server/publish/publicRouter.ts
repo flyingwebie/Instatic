@@ -61,7 +61,7 @@
 import type { DbClient } from '../db/client'
 import type { PublishedPageSnapshot } from '../repositories/publish'
 import type { PublishedDataRow } from '@core/data/schemas'
-import { isTemplatePage, resolveNotFoundTemplate } from '@core/templates'
+import { isTemplatePage, resolveNotFoundTemplate, resolveTemplateChain } from '@core/templates'
 import {
   getDataRowRedirectByRoute,
   getPublishedDataRowByRoute,
@@ -92,7 +92,7 @@ import { canonicalRenderQuery } from './loopPrefetch'
  */
 export function publicSlugFromPath(pathname: string): string {
   const trimmed = pathname.replace(/^\/+|\/+$/g, '')
-  return trimmed === '' ? 'index' : trimmed
+  return trimmed === '' ? 'index' : trimmed.split('/').map(decodeURIComponent).join('/')
 }
 
 /**
@@ -145,12 +145,16 @@ type PublicRouteResolution =
  * templates; when there isn't one, we return `not-found` rather than inventing
  * a fallback document.
  */
-async function resolvePublicRoute(
+export async function resolvePublicRoute(
   db: DbClient,
   url: URL,
 ): Promise<PublicRouteResolution> {
   // Page at the full slug.
-  const pageSlug = publicSlugFromPath(url.pathname)
+  let pageSlug: string
+  try { pageSlug = publicSlugFromPath(url.pathname) } catch (error) {
+    if (error instanceof URIError) return { kind: 'not-found' }
+    throw error
+  }
   const pageSnapshot = await getPublishedPageBySlug(db, pageSlug)
   if (pageSnapshot) {
     const page = pageSnapshot.site.pages.find((p) => p.id === pageSnapshot.pageRowId)
@@ -176,6 +180,7 @@ async function resolvePublicRoute(
     if (!siteSnapshot) return { kind: 'not-found' }
     // That snapshot carries no runtime manifest — an entry route takes the one
     // belonging to the template that actually renders it.
+    if (resolveTemplateChain(siteSnapshot.site, { kind: 'entry', tableSlug: row.tableSlug }).length === 0) return { kind: 'not-found' }
     const snapshot = await snapshotForEntryRoute(db, siteSnapshot, row.tableSlug)
     return { kind: 'row', snapshot, row }
   }

@@ -35,7 +35,7 @@ import { pageFromRow } from '../../src/core/data/pageFromRow'
 import { visualComponentFromRow } from '../../src/core/data/componentFromRow'
 import { validateVisualComponents } from '../../src/core/persistence/validate'
 import { savePublishedRuntimeAssets } from './runtimeAsset'
-import { nowIso } from '@core/utils/isoDate'
+import { isoDate, nowIso } from '@core/utils/isoDate'
 
 // ---------------------------------------------------------------------------
 // Types
@@ -46,6 +46,8 @@ export interface PublishedPageSnapshot {
   /** id of the `data_rows` row for this page (was `pageId` in the old schema). */
   pageRowId: string
   site: SiteDocument
+  publishedAt?: string
+  firstPublishedAt?: string
   runtimeAssets?: PublishedPageRuntimeAssets
   /**
    * Pre-serialised importmap mapping bare specifiers like `three` to URLs
@@ -77,6 +79,8 @@ interface SnapshotQueryRow {
   runtime_assets_json: PublishedPageRuntimeAssets | null
   importmap_body: string | null
   importmap_sha256: string | null
+  published_at: string | Date
+  first_published_at: string | Date
 }
 
 /** One page's version write within `persistSitePublish`. */
@@ -122,6 +126,8 @@ function snapshotFromQueryRow(row: SnapshotQueryRow): PublishedPageSnapshot {
     cmsSnapshotVersion: 1,
     pageRowId: row.row_id,
     site: row.site_json,
+    publishedAt: isoDate(row.published_at),
+    firstPublishedAt: isoDate(row.first_published_at),
     ...(row.runtime_assets_json && row.runtime_assets_json.scripts.length > 0
       ? { runtimeAssets: row.runtime_assets_json }
       : {}),
@@ -290,12 +296,14 @@ export async function getPublishedPageBySlug(
            site_snapshots.site_json,
            data_row_versions.runtime_assets_json,
            site_snapshots.importmap_body,
-           site_snapshots.importmap_sha256
+           site_snapshots.importmap_sha256,
+           data_row_versions.published_at,
+           (select min(versions.published_at) from data_row_versions versions where versions.row_id = data_rows.id) as first_published_at
     from data_rows
     join data_row_versions on data_row_versions.id = data_rows.active_version_id
     join site_snapshots on site_snapshots.id = data_row_versions.site_snapshot_id
     where data_rows.table_id = 'pages'
-      and data_rows.slug = ${slug}
+      and data_row_versions.slug = ${slug}
       and data_rows.status = 'published'
       and data_rows.deleted_at is null
     limit 1
@@ -312,7 +320,9 @@ export async function getPublishedPageSnapshotById(
            site_snapshots.site_json,
            data_row_versions.runtime_assets_json,
            site_snapshots.importmap_body,
-           site_snapshots.importmap_sha256
+           site_snapshots.importmap_sha256,
+           data_row_versions.published_at,
+           (select min(versions.published_at) from data_row_versions versions where versions.row_id = data_rows.id) as first_published_at
     from data_rows
     join data_row_versions on data_row_versions.id = data_rows.active_version_id
     join site_snapshots on site_snapshots.id = data_row_versions.site_snapshot_id
@@ -345,7 +355,9 @@ export async function getLatestPublishedSiteSnapshot(
     select data_rows.id as row_id,
            site_snapshots.site_json,
            site_snapshots.importmap_body,
-           site_snapshots.importmap_sha256
+           site_snapshots.importmap_sha256,
+           data_row_versions.published_at,
+           (select min(versions.published_at) from data_row_versions versions where versions.row_id = data_rows.id) as first_published_at
     from data_rows
     join data_row_versions on data_row_versions.id = data_rows.active_version_id
     join site_snapshots on site_snapshots.id = data_row_versions.site_snapshot_id

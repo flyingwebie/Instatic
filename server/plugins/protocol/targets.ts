@@ -41,6 +41,9 @@ import type { PluginPermission } from '@core/plugin-sdk'
 import type { AllowedApiTarget } from './apiCallSchema'
 
 export const TARGET_PERMISSIONS = {
+  'cms.publication.list': 'cms.publication.read',
+  'cms.publication.render': 'cms.publication.read',
+  'cms.publication.refresh': 'cms.hooks',
   // Routes — base permission. Public-access routes also require
   // `cms.routes.public`, asserted conditionally in the route handler/shim.
   'cms.routes.register': 'cms.routes',
