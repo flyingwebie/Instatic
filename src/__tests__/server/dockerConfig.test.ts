@@ -112,10 +112,12 @@ describe('coolify docker config', () => {
       .join('\n')
   }
 
-  const COOLIFY_COMPOSE_FILES = [
-    'docker-compose.coolify.yml',
-    'docker-compose.coolify.sqlite.yml',
-  ]
+  const COOLIFY_COMPOSE_IMAGES = {
+    'docker-compose.coolify.yml': 'ghcr.io/corebunch/instatic:latest',
+    'docker-compose.coolify.sqlite.yml': 'ghcr.io/corebunch/instatic:latest',
+    'docker-compose.coolify.flyingwebie.yml': 'ghcr.io/flyingwebie/instatic:latest',
+  }
+  const COOLIFY_COMPOSE_FILES = Object.keys(COOLIFY_COMPOSE_IMAGES)
 
   it.each(COOLIFY_COMPOSE_FILES)('leaves proxy and lifecycle concerns to Coolify in %s', (path) => {
     // Why this rule exists:
@@ -137,10 +139,10 @@ describe('coolify docker config', () => {
     expect(compose).not.toContain('restart:')
   })
 
-  it.each(COOLIFY_COMPOSE_FILES)('pulls the published image rather than building in %s', (path) => {
+  it.each(Object.entries(COOLIFY_COMPOSE_IMAGES))('pulls the repository image rather than building in %s', (path, image) => {
     const compose = effectiveYaml(path)
 
-    expect(compose).toContain('ghcr.io/corebunch/instatic:latest')
+    expect(compose).toContain(`image: \${INSTATIC_IMAGE:-${image}}`)
     expect(compose).not.toContain('build:')
   })
 
@@ -182,8 +184,8 @@ describe('coolify docker config', () => {
     expect(compose).toContain('server/healthcheck.ts')
   })
 
-  it('bundles Postgres with a readiness gate and persistent volumes', () => {
-    const compose = effectiveYaml('docker-compose.coolify.yml')
+  it.each(['docker-compose.coolify.yml', 'docker-compose.coolify.flyingwebie.yml'])('bundles Postgres with a readiness gate and persistent volumes in %s', (path) => {
+    const compose = effectiveYaml(path)
 
     expect(compose).toContain('image: postgres:16')
     expect(compose).toContain('condition: service_healthy')
