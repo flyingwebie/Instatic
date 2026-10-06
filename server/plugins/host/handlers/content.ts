@@ -44,7 +44,8 @@ import {
   scheduleDataRowPublish,
 } from '../../../repositories/data'
 import { publishDataRow } from '../../../publish/publishRow'
-import { republishAllPages } from '../../../publish/republish'
+import { refreshAllPublishedHtml } from '../../../publish/refreshPublished'
+import { getPluginUploadsDir } from '../registry'
 import { bumpPublishVersionSerialized } from '../../../publish/publishState'
 import { applyContentEntryCellsFilter } from '../../../publish/contentEvents'
 import type { DbClient } from '../../../db/client'
@@ -650,6 +651,6 @@ export async function handleContentRepublishAll(
   // the per-table access check would over-constrain a callee that only
   // wants to flush the publish pipeline. The kernel-of-correctness
   // remains the `cms.content.publish` permission grant.
-  const count = await republishAllPages(_db)
+  const count = await refreshAllPublishedHtml(_db, msg.args[0].origin, getPluginUploadsDir())
   replyApiOk(msg.pluginId, msg.correlationId, { count })
 }

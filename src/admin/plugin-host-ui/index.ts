@@ -73,6 +73,7 @@ export {
  */
 export { Widget } from '@ui/components/Widget'
 export { RangeTabs } from '@ui/components/RangeTabs'
+export { pushToast } from '@ui/components/Toast'
 export { Tabs, TabList, Tab, TabPanel } from '@ui/components/Tabs'
 export { WidgetList, WidgetListRow } from '@ui/components/WidgetList'
 export {

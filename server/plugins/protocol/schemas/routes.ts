@@ -57,6 +57,7 @@ const RouteAccessSchema = Type.Union([
 export const RouteRegistrationArgSchema = Type.Object(
   {
     method: RouteMethodSchema,
+    scope: Type.Optional(Type.Union([Type.Literal('runtime'), Type.Literal('site')])),
     path: Type.String({ minLength: 1 }),
     access: RouteAccessSchema,
     routeKey: Type.String({ minLength: 1 }),

@@ -13,6 +13,16 @@ export interface PluginCapability {
 
 export const PLUGIN_CAPABILITIES: PluginCapability[] = [
   {
+    permission: 'cms.routes.site', label: 'Serve plugin files and redirects on public site paths',
+    description: 'Registers anonymous GET routes outside the admin namespace. Published pages and reserved host paths take precedence. Also requires cms.routes and cms.routes.public.',
+    risk: 'dangerous', surfaces: ['server', 'cms'],
+  },
+  {
+    permission: 'cms.publication.read', label: 'Read public routes and their published HTML',
+    description: 'Lists actual published routes and renders their public HTML, without draft cells, preview branches, or private field exports.',
+    risk: 'low', surfaces: ['server', 'cms'],
+  },
+  {
     permission: 'admin.navigation',
     label: 'Add pages to the admin navigation',
     description: 'Allows the plugin to add pages to the CMS admin sidebar and plugin page router. Declarative page kinds (markdown, map, resource) render host-owned UI; app-kind pages additionally require `editor.code` because they run plugin JavaScript in the admin window.',

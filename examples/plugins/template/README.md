@@ -28,6 +28,8 @@ zip -qr ../my-plugin.zip .
 | `editor/index.js` | Editor entrypoint — commands, toolbar buttons, palette providers |
 | `server/index.js` | Server entrypoint — lifecycle hooks, CMS routes |
 
+The status route uses `cms.publication.read` to report the number of actual public routes. This API reads active main publication snapshots, never draft rows or preview branches. Template-only pages are omitted; concrete entries with published templates are included. See [the publication SDK guide](../../../docs/features/plugin-system.md#published-content--requires-cmspublicationread) for raw HTML, revision checks, and filter refreshes. Public root routes additionally require `cms.routes.public` and `cms.routes.site`; the template does not request these unused grants.
+
 ## Command Spotlight (⌘K) integration
 
 The template demonstrates all three levels of palette integration:

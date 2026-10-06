@@ -80,7 +80,7 @@ function makeFakeDb(
         rows: activeSnapshot
           ? [{
               row_id: activeSnapshot.pageRowId,
-              site_json: activeSnapshot.site,
+              published_at: '2026-01-01T00:00:00Z', first_published_at: '2026-01-01T00:00:00Z', site_json: activeSnapshot.site,
               runtime_assets_json: activeSnapshot.runtimeAssets ?? null,
               importmap_body: activeSnapshot.runtimePackageImportmap?.body ?? null,
               importmap_sha256: activeSnapshot.runtimePackageImportmap?.sha256 ?? null,

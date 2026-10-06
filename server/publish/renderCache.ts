@@ -62,6 +62,7 @@ let maxEntries: number = (() => {
 
 let hits = 0
 let misses = 0
+let renderEpoch = 0
 
 // LRU map: Map iteration order is insertion order → oldest entry is first.
 const map = new Map<string, CacheEntry>()
@@ -91,11 +92,17 @@ export function getStats(): { hits: number; misses: number; size: number } {
  * test a fully clean slate.
  */
 export function resetForTests(): void {
-  map.clear()
-  inFlight.clear()
+  invalidateRenderCache()
   hits = 0
   misses = 0
   resetPublishStateForTests()
+}
+
+/** Metadata/filter refreshes invalidate HTML without invalidating hole shells. */
+export function invalidateRenderCache(): void {
+  renderEpoch++
+  map.clear()
+  inFlight.clear()
 }
 
 /**
@@ -179,6 +186,7 @@ export async function getOrRender(
   // render is in flight, the result is stale and must NOT be cached as the new
   // version (that would serve old HTML as current until the next publish).
   const versionAtStart = currentVersion
+  const epochAtStart = renderEpoch
 
   // Start a new factory and register it as in-flight.
   const promise: Promise<CachedResponse | null> = (async () => {
@@ -187,7 +195,7 @@ export async function getOrRender(
       // Only cache when a publish did NOT happen mid-render. A version change
       // means `result` reflects a now-superseded snapshot — drop it and let the
       // next request re-render against the fresh snapshot.
-      if (result !== null && getPublishVersion() === versionAtStart) {
+      if (result !== null && getPublishVersion() === versionAtStart && renderEpoch === epochAtStart) {
         // Remove any stale entry for this key so the new one lands at the
         // most-recent (tail) position in the Map's insertion order.
         map.delete(k)
@@ -200,7 +208,7 @@ export async function getOrRender(
       }
       return result
     } finally {
-      inFlight.delete(k)
+      if (renderEpoch === epochAtStart) inFlight.delete(k)
     }
   })()
 

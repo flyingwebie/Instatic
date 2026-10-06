@@ -21,6 +21,7 @@ export type ContentEntryActor =
   | { kind: 'system' }
 
 export interface CmsServerEvents {
+  'publication.changed': { version: number }
   'publish.before': { siteId: string; pageId?: string }
   'publish.after': { siteId: string; pageId?: string }
   'content.entry.created': {
@@ -76,7 +77,7 @@ export interface CmsServerFilters {
  * ```
  */
 export interface CmsServerFilterContexts {
-  'publish.html': { siteId: string; pageId: string; slug: string }
+  'publish.html': { siteId: string; pageId: string; contentId: string; slug: string; urlPath: string; publishVersion: number; tableSlug?: string; publishedAt?: string; firstPublishedAt?: string }
   'publish.headers': { siteId: string; pageId: string; slug: string }
   'content.entry.cells': {
     tableSlug: string

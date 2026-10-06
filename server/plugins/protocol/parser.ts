@@ -48,7 +48,7 @@ function validateApiCallSemantics(call: ValidatedApiCall): void {
     )
   }
 
-  const expectedRouteKey = `${route.method}:${normalizedPath}`
+  const expectedRouteKey = `${route.scope === 'site' ? 'SITE:' : ''}${route.method}:${normalizedPath}`
   if (route.routeKey !== expectedRouteKey) {
     throw new ApiCallValidationError(
       `Invalid api-call payload for cms.routes.register: routeKey must be "${expectedRouteKey}"`,
@@ -79,4 +79,3 @@ export function parseApiCall(value: unknown): ValidatedApiCall {
 }
 
 // Re-export so callers can import the full allowlist if needed.
-

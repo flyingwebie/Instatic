@@ -12,6 +12,7 @@
  */
 
 import { Type } from '@sinclair/typebox'
+import { PublicationOriginOptionsSchema } from '@core/plugin-sdk'
 import { NodeTreeSchema } from '@core/page-tree'
 import {
   ContentListOptionsSchema,
@@ -91,4 +92,4 @@ export const ContentTreeReplaceArgsSchema = Type.Tuple([
 
 export const ContentSearchArgsSchema = Type.Tuple([QueryStringSchema, PositiveLimit])
 export const ContentSnapshotArgsSchema = Type.Tuple([EntryIdSchema])
-export const ContentRepublishAllArgsSchema = Type.Tuple([])
+export const ContentRepublishAllArgsSchema = Type.Tuple([PublicationOriginOptionsSchema])

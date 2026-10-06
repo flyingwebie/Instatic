@@ -186,7 +186,7 @@ function makeFakeDb(
         rows: snapshot
           ? [{
               row_id: snapshot.pageRowId,
-              site_json: snapshot.site,
+              published_at: '2026-01-01T00:00:00Z', first_published_at: '2026-01-01T00:00:00Z', site_json: snapshot.site,
               runtime_assets_json: null,
               importmap_body: null,
               importmap_sha256: null,

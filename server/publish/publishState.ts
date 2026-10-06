@@ -26,6 +26,8 @@
 // Publish version
 // ---------------------------------------------------------------------------
 
+import { hookBus } from '@core/plugins/hookBus'
+
 let publishVersion = 0
 
 /**
@@ -36,7 +38,11 @@ let publishVersion = 0
  * Call after every publish commit (full publish, per-row publish, unpublish).
  */
 export function bumpPublishVersion(): number {
-  return ++publishVersion
+  const version = ++publishVersion
+  // Post-commit notification is asynchronous: listeners must never keep the
+  // publish lock held while performing their own host calls or publications.
+  void hookBus.emit('publication.changed', { version })
+  return version
 }
 
 /**

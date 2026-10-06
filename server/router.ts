@@ -28,6 +28,7 @@ import { registry } from '@core/module-engine'
 import type { CssBundleFile, SiteCssBundleId } from '@core/publisher'
 import { buildPublishedSiteCssBundle } from './publish/siteCssBundle'
 import { mediaStorageRegistry } from '@core/plugins/mediaStorageRegistry'
+import { tryServePluginSiteRoute } from './plugins/host/siteRoutes'
 
 const VITE_DEV_URL = 'http://localhost:5173'
 
@@ -75,6 +76,7 @@ const routes: readonly RouteHandler[] = [
   tryServeUpload,
   tryServeAdminApp,
   tryServePublicRoute,
+  tryServePluginSiteRoute,
   trySetupRedirect,
   tryServeNotFoundPage,
 ]

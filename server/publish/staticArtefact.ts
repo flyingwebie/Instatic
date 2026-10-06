@@ -77,7 +77,7 @@ function getPublishedDir(uploadsDir: string): string {
   return join(uploadsDir, 'published')
 }
 
-function getSlotDir(uploadsDir: string, slot: Slot): string {
+export function getSlotDir(uploadsDir: string, slot: Slot): string {
   return join(getPublishedDir(uploadsDir), slot)
 }
 

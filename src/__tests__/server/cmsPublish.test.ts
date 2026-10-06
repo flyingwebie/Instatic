@@ -176,7 +176,7 @@ function createPublishFakeDb() {
       return { rows: [], rowCount: row ? 1 : 0 }
     }
     // getPublishedPageBySlug — join data_rows + data_row_versions + site_snapshots
-    if (sql.includes('site_snapshots.site_json') && sql.includes('data_rows.slug')) {
+    if (sql.includes('site_snapshots.site_json') && sql.includes('data_row_versions.slug')) {
       const slug = params[0] as string
       const row = state.dataRows.find((r) => r.slug === slug && r.status === 'published')
       const version = row ? state.dataRowVersions.find((v) => v.id === row.active_version_id) : null
@@ -188,6 +188,8 @@ function createPublishFakeDb() {
           ? [{
               row_id: version.row_id,
               site_json: snap.site_json,
+              published_at: version.published_at,
+              first_published_at: version.published_at,
               runtime_assets_json: version.runtime_assets_json,
               importmap_body: snap.importmap_body,
               importmap_sha256: snap.importmap_sha256,

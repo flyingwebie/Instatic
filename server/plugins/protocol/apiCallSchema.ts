@@ -16,6 +16,7 @@
  */
 
 import { Type, type Static, type TSchema } from '@sinclair/typebox'
+import { PublicationListOptionsSchema, PublicationRenderOptionsSchema, PublicationRefreshOptionsSchema } from '@core/plugin-sdk'
 import { StorageListOptionsSchema } from '@core/plugin-sdk/storageSchemas'
 import { RouteRegistrationArgSchema } from './schemas/routes'
 import { HookListenerArgSchema, HookFilterArgSchema, HookEmitArgSchema } from './schemas/hooks'
@@ -78,6 +79,9 @@ function apiCallSchema<TTarget extends string, TArgs extends TSchema>(
 // ---------------------------------------------------------------------------
 
 export const ApiCallSchemas = {
+  'cms.publication.list': apiCallSchema('cms.publication.list', Type.Tuple([PublicationListOptionsSchema])),
+  'cms.publication.render': apiCallSchema('cms.publication.render', Type.Tuple([PublicationRenderOptionsSchema])),
+  'cms.publication.refresh': apiCallSchema('cms.publication.refresh', Type.Tuple([PublicationRefreshOptionsSchema])),
   'cms.routes.register': apiCallSchema('cms.routes.register', Type.Tuple([RouteRegistrationArgSchema])),
   'cms.hooks.on': apiCallSchema('cms.hooks.on', Type.Tuple([HookListenerArgSchema])),
   'cms.hooks.filter': apiCallSchema('cms.hooks.filter', Type.Tuple([HookFilterArgSchema])),

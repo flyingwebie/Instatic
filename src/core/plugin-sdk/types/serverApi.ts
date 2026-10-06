@@ -18,6 +18,7 @@ import type {
   UpdateContentEntryInput,
 } from '../contentSchemas'
 import type { ServerPluginHooksApi } from './hooks'
+import type { PublicationListOptions, PublicationListResult, PublicationRenderOptions, PublicationRefreshOptions, PublicationOriginOptions, PublishedDocument } from '../publicationSchemas'
 import type { LoopEntitySource } from './loops'
 import type { ServerPluginMediaApi } from './media'
 import type { PluginMigrationContext } from './lifecycle'
@@ -55,6 +56,13 @@ export interface ServerPluginApi {
     assetUrl: (path: string) => string
   }
   cms: {
+    /** Read actual public routes and render their published HTML without invoking plugin filters. */
+    publication: {
+      list: (options?: PublicationListOptions) => Promise<PublicationListResult>
+      render: (options: PublicationRenderOptions) => Promise<PublishedDocument | null>
+      /** Re-run filters for existing published routes, without publishing draft edits. Requires cms.hooks. */
+      refresh: (options: PublicationRefreshOptions) => Promise<{ count: number; version: number }>
+    }
     /**
      * Register backend HTTP routes scoped under
      * `/admin/api/cms/plugins/:id/runtime/<path>`. Three access shapes:
@@ -76,6 +84,8 @@ export interface ServerPluginApi {
      *       and frontend tracker ingest endpoints.
      */
     routes: {
+      /** Visitor-facing GET routes. Published pages and reserved host namespaces take precedence. */
+      site: { get: (path: string, handler: ServerPluginRouteHandler) => void }
       get: (path: string, capability: string, handler: ServerPluginRouteHandler) => void
       post: (path: string, capability: string, handler: ServerPluginRouteHandler) => void
       patch: (path: string, capability: string, handler: ServerPluginRouteHandler) => void
@@ -175,7 +185,7 @@ export interface ServerPluginApi {
       }
       search: (query: string, limit?: number) => Promise<ReadonlyArray<ContentSearchResult>>
       getPublishedSnapshot: (entryId: string) => Promise<PublishedSnapshot | null>
-      republishAll: () => Promise<{ count: number }>
+      republishAll: (options: PublicationOriginOptions) => Promise<{ count: number }>
     }
     /**
      * Host-mediated media ingestion plus three independent extension tiers:

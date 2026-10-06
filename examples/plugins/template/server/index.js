@@ -4,7 +4,7 @@
  * Lifecycle hooks (install / activate / deactivate / uninstall) let the
  * plugin set up routes, subscribe to CMS events, and run migrations.
  *
- * Requires: cms.routes  (to register backend routes)
+ * Requires: cms.routes and cms.publication.read.
  */
 
 export function install(api) {
@@ -17,10 +17,11 @@ export function activate(api) {
   // Register a simple status route at:
   //   GET /admin/api/cms/plugins/acme.template/runtime/status
   // Requires the cms.routes permission.
-  api.cms.routes.get('/status', 'plugins.read', () => ({
+  api.cms.routes.get('/status', 'plugins.read', async () => ({
     ok: true,
     plugin: api.plugin.id,
     version: api.plugin.version,
+    publishedRoutes: (await api.cms.publication.list({ limit: 1 })).totalCount,
   }))
 }
 

@@ -14,6 +14,8 @@ import type { DbClient } from '../../../db/client'
 import { assertHostPluginPermission } from '../registry'
 import { replyApiOk } from '../apiReplies'
 import type { HostPluginRecord, HostRouteAccess } from '../types'
+import { hostPlugins } from '../registry'
+import { validateSiteRoutePattern } from '../siteRoutes'
 
 export async function handleRoutesRegister(
   msg: ApiCallFor<'cms.routes.register'>,
@@ -24,6 +26,15 @@ export async function handleRoutesRegister(
   // TARGET_PERMISSIONS). Only the conditional `cms.routes.public` grant for
   // anonymous-callable routes stays here — it can't live in a static map.
   const [arg] = msg.args
+  if (arg.scope === 'site') {
+    assertHostPluginPermission(entry, 'cms.routes.site')
+    assertHostPluginPermission(entry, 'cms.routes.public')
+    if (arg.method !== 'GET' || arg.access.kind !== 'public') throw new Error('Site routes must be anonymous GET routes.')
+    validateSiteRoutePattern(arg.path)
+    for (const other of hostPlugins.values()) {
+      if (other.manifest.id !== entry.manifest.id && other.routes.has(arg.routeKey)) throw new Error(`Site route ${arg.path} is already registered by another plugin.`)
+    }
+  }
 
   let access: HostRouteAccess
   switch (arg.access.kind) {

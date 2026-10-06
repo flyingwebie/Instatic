@@ -27,6 +27,7 @@ import { hostPlugins, getDbForApi, assertHostPluginPermission } from './registry
 import { replyApiError } from './apiReplies'
 import type { HostPluginRecord } from './types'
 import { handleRoutesRegister } from './handlers/routes'
+import { handlePublicationList, handlePublicationRender, handlePublicationRefresh } from './handlers/publication'
 import { handleHooksOn, handleHooksFilter, handleHooksEmit } from './handlers/hooks'
 import { handleLoopsRegisterSource } from './handlers/loops'
 import { handleStorageList, handleStorageCreate, handleStorageUpdate, handleStorageDelete } from './handlers/storage'
@@ -83,6 +84,9 @@ type AnyHostApiHandler = (
 ) => Promise<void>
 
 const apiHandlers = {
+  'cms.publication.list': handlePublicationList,
+  'cms.publication.render': handlePublicationRender,
+  'cms.publication.refresh': handlePublicationRefresh,
   'cms.routes.register': handleRoutesRegister,
   'cms.hooks.on': handleHooksOn,
   'cms.hooks.filter': handleHooksFilter,
