@@ -1359,4 +1359,44 @@ export const pgMigrations: Migration[] = [
     id: '030_iso_timestamps',
     sql: 'select 1',
   },
+  {
+    id: '031_plugin_json_values',
+    sql: `
+      -- Bun's PostgreSQL driver serializes JSONB parameters. Plugin writes
+      -- that pre-stringified objects therefore stored JSON string scalars;
+      -- reads could decode them, but field filters could never match them.
+      -- Repair only valid, string-wrapped values with the expected shape.
+      create function pg_temp.instatic_plugin_json_031(value jsonb, expected_type text)
+      returns jsonb language plpgsql as $$
+      declare decoded jsonb;
+      begin
+        if jsonb_typeof(value) <> 'string' then
+          return value;
+        end if;
+        decoded := cast(value #>> '{}' as jsonb);
+        if jsonb_typeof(decoded) = expected_type then
+          return decoded;
+        end if;
+        return value;
+      -- Invalid JSON and values JSONB cannot represent must remain intact.
+      exception when data_exception then
+        return value;
+      end;
+      $$;
+
+      update plugin_records
+         set data_json = pg_temp.instatic_plugin_json_031(data_json, 'object')
+       where jsonb_typeof(data_json) = 'string';
+
+      update installed_plugins
+         set manifest_json = pg_temp.instatic_plugin_json_031(manifest_json, 'object'),
+             granted_permissions_json = pg_temp.instatic_plugin_json_031(granted_permissions_json, 'array'),
+             settings_json = pg_temp.instatic_plugin_json_031(settings_json, 'object')
+       where jsonb_typeof(manifest_json) = 'string'
+          or jsonb_typeof(granted_permissions_json) = 'string'
+          or jsonb_typeof(settings_json) = 'string';
+
+      drop function pg_temp.instatic_plugin_json_031(jsonb, text);
+    `,
+  },
 ]

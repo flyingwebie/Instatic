@@ -46,6 +46,10 @@ The adapters exploit it:
 - **On read** — any column whose name ends in `_json` and whose value is a non-empty string is auto-`JSON.parse`d. Repositories receive a `Record<string, unknown>`, not a string. Postgres `jsonb` values already arrive parsed; this read normalizer covers `_json` columns backed by text.
 - **On write** — the SQLite adapter auto-`JSON.stringify`s any plain object or array passed via tagged-template interpolation. Postgres relies on `Bun.sql` parameter binding and native `jsonb` handling where the backing column is `jsonb`.
 
+Pass objects and arrays directly. Pre-stringifying a `jsonb` parameter makes Bun store a JSON string scalar: read normalization can hide that error, while `jsonField()` filters cannot find its fields. `server/repositories/__tests__/pluginRecords.test.ts` exercises checkpoint updates, filtered pagination, and native JSON types against both adapters. PostgreSQL cases run when `TEST_POSTGRES_URL` names a local `instatic_plugin_test` database; the suite creates and removes a separate disposable database. CI and release verification provide that service.
+
+Migration `031_plugin_json_values` in `server/db/migrations-pg.ts` repairs valid string-wrapped plugin JSON with the expected object/array shape and preserves malformed values and record IDs. The matching SQLite migration is a no-op because its TEXT JSON binding already stores the correct shape.
+
 Result: repository code is identical across dialects:
 
 ```ts

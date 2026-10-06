@@ -6,6 +6,14 @@ This project is pre-1.0. Breaking changes may appear in minor or patch releases 
 
 ## Unreleased
 
+## 0.0.23 - 2026-10-06
+
+### Plugin storage
+
+- Fixed PostgreSQL plugin record filters returning no matches after saving JSON data. This prevented SEO/GEO generation from resuming its checkpoint and completing `sitemap.xml`.
+- Added a non-destructive startup migration that unwraps valid plugin records, manifests, permission arrays, and settings stored as JSON strings. Record IDs and malformed values are preserved; SQLite needs no repair.
+- Added real PostgreSQL persistence and repair tests to CI and release verification.
+
 ## 0.0.22 - 2026-10-06
 
 ### Plugins and Coolify

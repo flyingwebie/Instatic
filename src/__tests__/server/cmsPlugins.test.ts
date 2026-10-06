@@ -103,7 +103,8 @@ function makeFakeDb() {
         enabled: true,
         lifecycle_status: 'installed',
         last_error: null,
-        manifest_json: values[3],
+        // Match the database's JSON transport, including omission of undefined fields.
+        manifest_json: JSON.parse(JSON.stringify(values[3])),
         granted_permissions_json: values[4] ?? [],
         // Upsert preserves stored settings + installed_at across re-installs
         // (matches the real `on conflict do update` clause that doesn't SET
@@ -443,8 +444,7 @@ describe('CMS plugin handlers', () => {
     )
     expect(install.status).toBe(201)
 
-    const storedSettings = (): Record<string, unknown> =>
-      JSON.parse(String(db.plugins[0].settings_json)) as Record<string, unknown>
+    const storedSettings = () => db.plugins[0].settings_json
     const secretRow = () =>
       db.secrets.find((s) => s.plugin_id === 'local.secret' && s.setting_id === 'apiKey')
 
@@ -681,10 +681,8 @@ describe('CMS plugin handlers', () => {
         },
       },
     })
-    expect(typeof db.plugins[0].manifest_json).toBe('string')
-    expect(typeof db.plugins[0].granted_permissions_json).toBe('string')
-    expect(JSON.parse(String(db.plugins[0].granted_permissions_json)))
-      .toEqual(privilegedManifest.permissions)
+    expect(db.plugins[0].manifest_json).toMatchObject({ id: privilegedManifest.id, grantedPermissions: privilegedManifest.permissions })
+    expect(db.plugins[0].granted_permissions_json).toEqual(privilegedManifest.permissions)
   })
 
   it('rejects grants the manifest never declared (tampered client)', async () => {
@@ -756,8 +754,8 @@ describe('CMS plugin handlers', () => {
       )
 
       expect(install.status).toBe(201)
-      expect(typeof db.plugins[0].manifest_json).toBe('string')
-      expect(typeof db.plugins[0].granted_permissions_json).toBe('string')
+      expect(db.plugins[0].manifest_json).toMatchObject({ id: manifest.id, grantedPermissions: manifest.permissions })
+      expect(db.plugins[0].granted_permissions_json).toEqual(manifest.permissions)
       expect(await install.json()).toMatchObject({
         plugin: {
           id: 'acme.workflow',
