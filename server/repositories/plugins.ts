@@ -70,10 +70,6 @@ function readManifestJson(value: unknown): unknown {
   return value
 }
 
-function writeJson(value: unknown): string {
-  return JSON.stringify(value)
-}
-
 function mapInstalledPlugin(row: InstalledPluginRow): InstalledPluginResult {
   const rawManifest = readManifestJson(row.manifest_json)
   try {
@@ -205,7 +201,7 @@ export async function installPlugin(
   )
   const { rows } = await db<InstalledPluginRow>`
     insert into installed_plugins (id, name, version, manifest_json, granted_permissions_json, settings_json, enabled, lifecycle_status, last_error)
-    values (${manifest.id}, ${manifest.name}, ${manifest.version}, ${writeJson(manifestToStore)}, ${writeJson(grantedPermissions)}, ${writeJson(initialSettings)}, true, 'installed', null)
+    values (${manifest.id}, ${manifest.name}, ${manifest.version}, ${manifestToStore}, ${grantedPermissions}, ${initialSettings}, true, 'installed', null)
     on conflict (id) do update
       set name = excluded.name,
           version = excluded.version,
@@ -283,7 +279,7 @@ export async function setPluginSettings(
   const plainSettings = await applyPluginSecretSettings(db, id, declared, settings)
   const { rows } = await db<InstalledPluginRow>`
     update installed_plugins
-       set settings_json = ${writeJson(plainSettings)},
+       set settings_json = ${plainSettings},
            updated_at = ${nowIso()}
      where id = ${id}
     returning id, name, version, enabled, lifecycle_status, last_error,
@@ -430,7 +426,7 @@ export async function createPluginRecord(
 ): Promise<PluginRecord> {
   const { rows } = await db<PluginRecordRow>`
     insert into plugin_records (id, plugin_id, resource_id, data_json)
-    values (${input.id}, ${input.pluginId}, ${input.resourceId}, ${writeJson(input.data)})
+    values (${input.id}, ${input.pluginId}, ${input.resourceId}, ${input.data})
     returning id, plugin_id, resource_id, data_json, created_at, updated_at
   `
   return mapPluginRecord(rows[0])
@@ -446,7 +442,7 @@ export async function updatePluginRecord(
   },
 ): Promise<PluginRecord | null> {
   const { rows } = await db<PluginRecordRow>`
-    update plugin_records set data_json = ${writeJson(input.data)}, updated_at = ${nowIso()}
+    update plugin_records set data_json = ${input.data}, updated_at = ${nowIso()}
     where id = ${input.id} and plugin_id = ${input.pluginId} and resource_id = ${input.resourceId}
     returning id, plugin_id, resource_id, data_json, created_at, updated_at
   `

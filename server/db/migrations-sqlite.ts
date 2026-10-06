@@ -1515,4 +1515,10 @@ export const sqliteMigrations: Migration[] = [
     id: '030_iso_timestamps',
     sql: isoTimestampRewrite030(),
   },
+  {
+    // SQLite's TEXT JSON values already have the correct shape: its binder
+    // passes pre-stringified strings through without wrapping them again.
+    id: '031_plugin_json_values',
+    sql: 'select 1',
+  },
 ]

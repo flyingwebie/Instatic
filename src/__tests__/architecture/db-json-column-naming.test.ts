@@ -43,12 +43,20 @@ interface JsonbColumn {
  */
 const JSONB_COL_RE = /(\w+)\s+jsonb\b/g
 
+// Only table DDL declares columns. Function arguments, return types, local
+// variables, and casts in data migrations also mention jsonb/text.
+function tableDdl(sql: string): string {
+  const uncommented = sql.replace(/--[^\n]*|\/\*[\s\S]*?\*\//g, '')
+  return (uncommented.match(/\b(?:create\s+table|alter\s+table)\b[\s\S]*?;/gi) ?? []).join('\n')
+}
+
 function extractJsonbColumns(): JsonbColumn[] {
   const result: JsonbColumn[] = []
   for (const migration of pgMigrations) {
     JSONB_COL_RE.lastIndex = 0
     let m: RegExpExecArray | null
-    while ((m = JSONB_COL_RE.exec(migration.sql)) !== null) {
+    const ddl = tableDdl(migration.sql)
+    while ((m = JSONB_COL_RE.exec(ddl)) !== null) {
       result.push({ name: m[1], migrationId: migration.id })
     }
   }
@@ -64,9 +72,10 @@ const TEXT_COL_RE = /(\w+)\s+text\b/g
 
 function extractTextColumnNames(sql: string): Set<string> {
   const names = new Set<string>()
+  const ddl = tableDdl(sql)
   TEXT_COL_RE.lastIndex = 0
   let m: RegExpExecArray | null
-  while ((m = TEXT_COL_RE.exec(sql)) !== null) {
+  while ((m = TEXT_COL_RE.exec(ddl)) !== null) {
     names.add(m[1])
   }
   return names
@@ -78,6 +87,19 @@ function extractTextColumnNames(sql: string): Set<string> {
 
 describe('JSON column naming — _json suffix required on all jsonb columns', () => {
   const jsonbColumns = extractJsonbColumns()
+
+  test('scans table columns while ignoring JSON repair functions and casts', () => {
+    const sql = `
+      create function repair(value jsonb) returns jsonb language plpgsql as $$
+      declare decoded jsonb;
+      begin return cast(value as jsonb); end; $$;
+      create table example (payload_json jsonb, label text);
+      alter table example add column settings_json jsonb;
+      update example set payload_json = cast(label as jsonb);
+    `
+    expect([...tableDdl(sql).matchAll(JSONB_COL_RE)].map(match => match[1])).toEqual(['payload_json', 'settings_json'])
+    expect([...extractTextColumnNames(sql)]).toEqual(['label'])
+  })
 
   test('every jsonb column in migrations-pg.ts has a name ending in _json', () => {
     const violations = jsonbColumns.filter((c) => !c.name.endsWith('_json'))

@@ -81,6 +81,10 @@ const ALLOWLISTED = new Set([
   // The only legitimate caller of either operator in the repo. Egress is independently gated by
   // json-extract-egress.test.ts.
   join(PROJECT_ROOT, 'server/db/jsonExtract.ts'),
+  // Real PostgreSQL persistence/migration fixtures deliberately bind JSONB
+  // string scalars to reproduce broken stored data. Production repositories
+  // remain subject to this gate; the same suite also exercises SQLite.
+  join(PROJECT_ROOT, 'server/repositories/__tests__/pluginRecords.test.ts'),
 ])
 
 /**

@@ -85,7 +85,8 @@ function makeFakeDb() {
         enabled: true,
         lifecycle_status: 'installed',
         last_error: null,
-        manifest_json: values[3],
+        // Match the database's JSON transport, including omission of undefined fields.
+        manifest_json: JSON.parse(JSON.stringify(values[3])),
         granted_permissions_json: values[4] ?? [],
         installed_at: now,
         updated_at: now,
