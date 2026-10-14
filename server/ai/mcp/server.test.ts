@@ -60,6 +60,12 @@ let db: DbClient
 beforeEach(async () => { db = await freshDb() })
 
 describe('mcp server', () => {
+  it('advertises styling instructions so external agents keep CSS in editable rules', async () => {
+    const client = await connectClient(db, ['ai.chat', 'site.read'])
+    expect(client.getInstructions()).toContain('site_write_code_asset')
+    await client.close()
+  })
+
   it('lists tools filtered by capability (no write tools without ai.tools.write)', async () => {
     // Read-only: site + data + content reads, but NO ai.tools.write.
     const client = await connectClient(db, ['ai.chat', 'content.manage', 'site.read', 'data.system.tables.read'])

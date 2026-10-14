@@ -20,6 +20,7 @@ import { getErrorMessage } from '@core/utils/errorMessage'
 import type { AiBrowserBridge, AiTool, AiToolOutput } from '../runtime/types'
 import { executeAiTool } from '../drivers/http/execTool'
 import { mcpToolsForCapabilities } from './registry'
+import { MCP_SERVER_INSTRUCTIONS } from './instructions'
 import { authorizeMcpContentTool } from './contentAuthorization'
 import { getEditorBridgeBranch, getEditorBridgeForUser, type EditorBridgeScope } from './editorBridge'
 import { runPublishFlush } from '../../publish/publishFlush'
@@ -112,7 +113,7 @@ function plainInputSchema(schema: AiTool['inputSchema']): Tool['inputSchema'] {
 export function buildMcpServer(ctx: McpServerContext): Server {
   const server = new Server(
     { name: 'instatic', version: '1.0.0' },
-    { capabilities: { tools: {} } },
+    { capabilities: { tools: {} }, instructions: MCP_SERVER_INSTRUCTIONS },
   )
 
   const tools = mcpToolsForCapabilities(
