@@ -280,7 +280,7 @@ rail; there is no silent forking. A new selector typed in the panel creates a
 real class or ambient rule; a new `.class` is **not** auto-assigned to the
 selection (assignment stays explicit — the HTML panel's `class` attribute).
 
-**CSS tools** — `css/CssToolbar.tsx` opens compact category popups with
+**CSS tools** — `@site/code-editor/css-toolbar` opens compact category popups with
 icon-only preset and property controls. The reorder icon at the end of the row
 opens an icon palette: drag a control into place, select it and use the move
 arrows, or use Left/Right/Home/End on a focused icon. Reset restores the default
@@ -290,11 +290,16 @@ Accessible names, tooltips and pressed states identify each option. Changing cat
 document. Choosing a preset keeps the popup open for successive edits;
 selector navigation remains searchable text so authored selectors are readable.
 
-Presets live in `css/cssToolbarCatalog.ts`, with icons in
-`css/cssToolbarIcons.ts`. Selecting **Display grid** reveals Grid-1/2/3/4/6,
+The toolbar lives next to the CodeMirror surface it drives, not next to the
+dock, because the floating code editor mounts the same component over a
+stylesheet file — one toolset, two hosts (see [editor.md](../editor.md) →
+"Code editor panel").
+
+Presets live in `css-toolbar/cssToolbarCatalog.ts`, with icons in
+`css-toolbar/cssToolbarIcons.ts`. Selecting **Display grid** reveals Grid-1/2/3/4/6,
 a responsive grid preset, column/row count editors, and independent gap
 editors in the Layout popup. Column presets preserve existing row tracks and
-gaps. `css/CssPropertyEditor.tsx` edits track counts from 1 to 24 and custom
+gaps. `css-toolbar/CssPropertyEditor.tsx` edits track counts from 1 to 24 and custom
 CSS properties/values (including arbitrary track definitions). Property forms
 open inside the same popup. Typography includes bold, italic, underline and
 strikethrough toggles reflecting the current block's authored declarations.

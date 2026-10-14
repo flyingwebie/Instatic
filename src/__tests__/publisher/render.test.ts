@@ -722,7 +722,7 @@ describe('publishPage', () => {
       h3: { moduleId: 'base.text', props: { text: 'C' } },
     })
     const { html } = publishPage(page, site, reg)
-    const count = (html.match(/h1 \{ color: black; \}/g) ?? []).length
+    const count = (html.match(/h1\{color: black\}/g) ?? []).length
     expect(count).toBe(1) // deduplicated — not 3
   })
 
@@ -747,12 +747,13 @@ describe('publishPage', () => {
     const page = makePage({ root: { moduleId: 'base.text', props: { text: 'Hi' } } })
     const { html } = publishPage(page, site, registry)
     // Reset rules — verify both core box-model and body baseline reach the page.
-    expect(html).toContain(':where(*, *::before, *::after) { box-sizing: border-box; }')
-    expect(html).toContain(':where(*) { margin: 0; padding: 0; }')
+    // The inline <style> block ships minified, like the external bundle.
+    expect(html).toContain(':where(*,*::before,*::after){box-sizing: border-box}')
+    expect(html).toContain(':where(*){margin: 0;padding: 0}')
     expect(html).toContain('font-family: system-ui')
     // Cascade order: reset must appear before module CSS so module rules win.
-    const resetIndex = html.indexOf(':where(*, *::before, *::after)')
-    const moduleIndex = html.indexOf('h1 { color: black; }')
+    const resetIndex = html.indexOf(':where(*,*::before,*::after)')
+    const moduleIndex = html.indexOf('h1{color: black}')
     expect(resetIndex).toBeGreaterThan(-1)
     expect(moduleIndex).toBeGreaterThan(resetIndex)
   })
@@ -889,10 +890,10 @@ describe('publishPage', () => {
     expect(html).toContain(':root:not(.theme-alt) .theme-inverted')
     expect(html).not.toContain('theme-dark')
     expect(html).not.toContain('theme-light')
-    expect(html).toContain('--primary: hsla(238, 100%, 62%, 1);')
-    expect(html).toContain('--primary: hsla(238, 100%, 42%, 1);')
+    expect(html).toContain('--primary: hsla(238,100%,62%,1)')
+    expect(html).toContain('--primary: hsla(238,100%,42%,1)')
     expect(html).toContain('.text-primary')
-    expect(html).toContain('color: var(--primary);')
+    expect(html).toContain('color: var(--primary)')
     expect(html).not.toContain('cf-theme')
   })
 
@@ -935,7 +936,7 @@ describe('publishPage', () => {
     const doc = new DOMParser().parseFromString(html, 'text/html')
     const css = [...doc.querySelectorAll('style')].map((style) => style.textContent).join('\n')
     const altSelectors = [...css.matchAll(/([^{}]+)\{([^{}]*)\}/g)]
-      .filter((match) => match[2].includes('--bg-body: hsla(0, 0%, 5%, 1);'))
+      .filter((match) => match[2].includes('--bg-body: hsla(0,0%,5%,1)'))
       .map((match) => match[1].trim())
       .join(',\n')
 

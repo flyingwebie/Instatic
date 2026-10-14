@@ -28,6 +28,7 @@
 
 import { CodeEditorSkeleton } from './CodeEditorSkeleton'
 import { Suspense, lazy, useEffect, useId, useRef, useState } from 'react'
+import { ArrowsScaleIcon } from 'pixel-art-icons/icons/arrows-scale'
 import { ChevronUpIcon } from 'pixel-art-icons/icons/chevron-up'
 import { MinusIcon } from 'pixel-art-icons/icons/minus'
 import { useEditorStore } from '@site/store/store'
@@ -38,9 +39,14 @@ import { ScriptSettingsPane } from './ScriptSettingsPane'
 import { StyleSettingsPane } from './StyleSettingsPane'
 import { EmptyState } from '@ui/components/EmptyState'
 import { Button } from '@ui/components/Button'
+import { pushToast } from '@ui/components/Toast'
 import { cn } from '@ui/cn'
 import type { SiteRuntimeDiagnostic } from '@core/site-runtime'
 import { fileLanguage } from './fileLanguage'
+import { FormatButton } from './FormatButton'
+import { CssToolbar, type CssPreset } from './css-toolbar'
+import type { CodeMirrorEditorHandle } from './CodeMirrorEditor'
+import type { CssToolbarCommand, CssToolbarContext } from './cssToolbarTypes'
 import type { TypeScriptEditorDiagnostic } from './typescriptProtocol'
 import {
   fileRuntimeDiagnostics,
@@ -88,6 +94,18 @@ export function CodeEditorPanel({ runtimeValidation }: CodeEditorPanelProps) {
     docKey: string | null
     diagnostics: TypeScriptEditorDiagnostic[]
   }>({ docKey: null, diagnostics: [] })
+  // Full-screen is panel chrome, not document state: the CodeMirror subtree is
+  // restyled in place, never remounted, so undo history, folds and the caret
+  // survive the toggle.
+  const [expanded, setExpanded] = useState(false)
+  const editorRef = useRef<CodeMirrorEditorHandle | null>(null)
+  const [cssContext, setCssContext] = useState<CssToolbarContext>({
+    rules: [],
+    activeRule: null,
+    declarations: {},
+    canEdit: false,
+    canWrap: false,
+  })
 
   // Find the active file (null when no file is open or loading site)
   const activeFile = activeEditorFileId && site
@@ -200,16 +218,43 @@ export function CodeEditorPanel({ runtimeValidation }: CodeEditorPanelProps) {
       : 'Code Editor'
   const hasActivePreview = Boolean(activeFile) || Boolean(activeCodeBuffer)
 
+  // The CSS toolbar is the same control surface the Code Dock's CSS panel
+  // uses — it drives whatever CodeMirror buffer is mounted, so a stylesheet
+  // file gets the God Mode toolset without a second implementation.
+  const isCssDocument = editorDoc?.language === 'css'
+  const conditions: CssPreset[] = (site?.breakpoints ?? [])
+    .filter((bp) => bp.mediaQuery)
+    .map((bp) => ({
+      label: bp.label,
+      icon: 'monitor',
+      command: { kind: 'wrap', condition: `@media ${bp.mediaQuery}` },
+    }))
+  const runCssCommand = (command: CssToolbarCommand) => {
+    const result = editorRef.current?.runCssCommand(command)
+    if (result && !result.ok)
+      pushToast({ kind: 'error', title: 'Could not edit CSS', body: result.error })
+  }
+
   return (
     <aside
       ref={setPanelRef}
       aria-label="Code Editor"
       data-panel="code-editor"
+      data-expanded={expanded ? 'true' : 'false'}
       tabIndex={-1}
       onClick={(e) => e.stopPropagation()}
+      onKeyDown={(e) => {
+        if (e.key !== 'Escape' || !expanded) return
+        e.stopPropagation()
+        setExpanded(false)
+      }}
       // panelPositionStyle injects --panel-x / --panel-y CSS vars (whitelisted)
       style={panelPositionStyle}
-      className={cn(styles.panel, (!hasActivePreview || !codeEditorPanelOpen) && styles.panelHidden)}
+      className={cn(
+        styles.panel,
+        expanded && styles.panelExpanded,
+        (!hasActivePreview || !codeEditorPanelOpen) && styles.panelHidden,
+      )}
     >
       <div className={styles.inner}>
         {/* ── Shared Panel Header ──────────────────────────────────────────── */}
@@ -217,8 +262,29 @@ export function CodeEditorPanel({ runtimeValidation }: CodeEditorPanelProps) {
           panelId="code-editor"
           title={panelTitle}
           onClose={closeEditor}
-          dragHandleProps={headerDragProps}
-        />
+          // Dragging a full-screen panel has nowhere to go; the grab cursor
+          // would be a lie.
+          dragHandleProps={expanded ? undefined : headerDragProps}
+        >
+          {editorDoc && editorDoc.language !== 'text' && (
+            <FormatButton
+              onFormat={() => void editorRef.current?.format()}
+              testId="code-editor-format"
+            />
+          )}
+          <Button
+            variant="ghost"
+            size="xs"
+            iconOnly
+            pressed={expanded}
+            aria-label={expanded ? 'Exit full screen' : 'Expand to full screen'}
+            tooltip={expanded ? 'Exit full screen' : 'Expand to full screen'}
+            onClick={() => setExpanded((current) => !current)}
+            data-testid="code-editor-expand"
+          >
+            <ArrowsScaleIcon size={12} aria-hidden="true" />
+          </Button>
+        </PanelHeader>
 
         {/* ── Editor body ─────────────────────────────────────────────────── */}
         <div className={styles.editorBody}>
@@ -240,8 +306,17 @@ export function CodeEditorPanel({ runtimeValidation }: CodeEditorPanelProps) {
               {isScriptFile && activeFile && <ScriptSettingsPane file={activeFile} />}
               {isStyleFile && activeFile && <StyleSettingsPane file={activeFile} />}
               <div className={styles.editorSurface}>
+                {isCssDocument && (
+                  <CssToolbar
+                    key={editorDoc.docKey}
+                    context={cssContext}
+                    run={runCssCommand}
+                    conditions={conditions}
+                  />
+                )}
                 <Suspense fallback={<CodeEditorSkeleton />}>
                   <CodeMirrorEditor
+                    ref={editorRef}
                     docKey={editorDoc.docKey}
                     value={editorDoc.value}
                     language={editorDoc.language}
@@ -249,6 +324,10 @@ export function CodeEditorPanel({ runtimeValidation }: CodeEditorPanelProps) {
                     diagnostics={isScriptFile ? activeFileDiagnostics : EMPTY_DIAGNOSTICS}
                     filePath={isScriptFile ? activeFile?.path : undefined}
                     projectFiles={isScriptFile ? site?.files : undefined}
+                    onCssContextChange={isCssDocument ? setCssContext : undefined}
+                    onFormatError={(message) =>
+                      pushToast({ kind: 'error', title: 'Could not format the code', body: message })
+                    }
                     onTypeScriptDiagnosticsChange={isScriptFile && activeFile
                       ? (nextDiagnostics) => setTypeScriptProblems({
                           docKey: activeFile.id,

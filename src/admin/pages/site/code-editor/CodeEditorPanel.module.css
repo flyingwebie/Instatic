@@ -35,6 +35,21 @@
   transform: translateZ(0);
 }
 
+/* Full-screen mode: the panel keeps its DOM subtree (so the CodeMirror view,
+   its history and its folds survive) and only trades the floating box for the
+   whole viewport. Written after `.panel` so the position overrides win. */
+.panelExpanded {
+  left: 0;
+  top: 0;
+  width: 100vw;
+  height: 100dvh;
+  /* Above the floating panel band so nothing overlaps a full-screen editor. */
+  z-index: 120;
+  border: 0;
+  border-radius: 0;
+  box-shadow: none;
+}
+
 /* Always-mounted pattern: display:none hides without unmounting
    (useDraggablePanel position is preserved across open/close) */
 .panelHidden {

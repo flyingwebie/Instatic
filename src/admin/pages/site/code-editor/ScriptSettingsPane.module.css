@@ -1,11 +1,13 @@
 .pane {
   display: flex;
   flex-direction: column;
-  gap: var(--space-s);
-  width: 216px;
-  min-width: 216px;
+  gap: var(--space-xs);
+  /* Narrow on purpose: the pane holds a toggle, a scope select and a number
+     field — the editor beside it is what the width is for. */
+  width: 164px;
+  min-width: 164px;
   height: 100%;
-  padding: var(--space-m);
+  padding: var(--space-s);
   overflow-y: auto;
   border-right: 1px solid var(--overlay-10);
   background: var(--overlay-5);

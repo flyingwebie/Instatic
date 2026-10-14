@@ -9,7 +9,9 @@
   min-height: 0;
   background: var(--bg-body);
   border: 1px solid var(--border-muted);
-  border-radius: var(--panel-radius);
+  /* The dock is anchored to the bottom of the stage: square where it meets the
+     canvas above it, rounded only on the free bottom edge. */
+  border-radius: 0 0 var(--panel-radius) var(--panel-radius);
 }
 
 .heightHandle {

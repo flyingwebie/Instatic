@@ -317,6 +317,32 @@ Two block-level passes run at publish time (inline mode):
 1. **Per-module pass** — inside `renderStandardNode` when storing module CSS in `cssMap`. Module CSS is sanitised before dedup storage.
 2. **Full-assembly pass** — in `buildStyleHead` after concatenating reset + framework + module + class + user stylesheets into the final `<style>` block. This pass protects user-authored stylesheets, which are the higher-risk vector (stored user content). The second pass is idempotent on already-sanitised module CSS.
 
+### Minification — what ships is not what was authored
+
+Published CSS and JS go out compressed; the editor's buffers never do, so the
+author keeps readable source either way.
+
+**CSS** — `minifyCss` (`src/core/publisher/minifyCss.ts`) runs at both CSS exits:
+`makeBundleFile` for each of the four bundle files, and `buildStyleHead` for the
+inline `<style>` block. It is deliberately conservative, because the input
+includes hand-written user stylesheets: string literals and unquoted `url(…)`
+bodies pass through verbatim, whitespace collapses to one space and is dropped
+only next to `{`, `}`, `;` and `,`, and spaces around `:`, `+`, `-`, `~` and `>`
+are left alone (a descendant combinator and a `calc()` operand separator look
+the same from a tokenizer's distance). Comments go, except `/*!` — which is why
+`collectUserStylesheetCss` writes its per-file origin markers as `/*! path */`:
+they are worth more on a minified live page than in the canvas. The bundle hash
+is taken over the **minified** bytes, so a cache entry can never disagree with
+its URL.
+
+**JS** — `bundleScripts.ts` sets esbuild's `minify` from the build target.
+`target: 'publish'` minifies; `target: 'canvas'` does not, so a breakpoint in
+the preview still lands on the line the author wrote. Classic-format scripts are
+not bundled (they need their browser globals), so each goes through one
+`esbuild.transform` that both surfaces syntax errors as diagnostics and returns
+the compressed body — `transform` without `bundle` leaves top-level names alone,
+so a script that hangs itself off `window` still resolves.
+
 ### Hashed bundle filenames
 
 The server's `siteCssBundle.ts` and the client's `siteCssBundle.ts` together name each bundle file `<group>-<contentHash>.css`. The publisher emits `<link rel="stylesheet" href="/_instatic/css/<bundle>-<hash>.css">` per non-empty bundle. `Cache-Control: immutable` (1 year) is safe because the hash changes whenever the content does.

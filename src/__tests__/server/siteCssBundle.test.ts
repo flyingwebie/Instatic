@@ -75,7 +75,8 @@ describe('buildSiteCssBundle', () => {
     site.pages = [page]
 
     const bundle = buildSiteCssBundle(site, registry)
-    expect(bundle.reset.content).toContain(':where(*, *::before, *::after) { box-sizing: border-box; }')
+    // Bundle bodies are minified — `makeBundleFile` hashes exactly what ships.
+    expect(bundle.reset.content).toContain(':where(*,*::before,*::after){box-sizing: border-box}')
     expect(bundle.reset.content).toContain('font-family: system-ui')
   })
 
@@ -89,7 +90,7 @@ describe('buildSiteCssBundle', () => {
     ]
 
     const bundle = buildSiteCssBundle(site, registry)
-    const occurrences = bundle.framework.content.match(/h1 \{ color: black; \}/g) ?? []
+    const occurrences = bundle.framework.content.match(/h1\{color: black\}/g) ?? []
     expect(occurrences.length).toBe(1)
   })
 
@@ -157,9 +158,9 @@ describe('buildSiteCssBundle', () => {
 
     const bundle = buildSiteCssBundle(site, registry)
 
-    expect(bundle.framework.content).toContain('--primary: hsla(238, 100%, 62%, 1);')
+    expect(bundle.framework.content).toContain('--primary: hsla(238,100%,62%,1)')
     expect(bundle.framework.content).toContain('.text-primary')
-    expect(bundle.framework.content).toContain('color: var(--primary);')
+    expect(bundle.framework.content).toContain('color: var(--primary)')
     expect(bundle.framework.content).not.toContain('.bg-primary')
     expect(bundle.style.content).toContain('.hero')
     expect(bundle.style.content).not.toContain('.text-primary')
@@ -200,15 +201,16 @@ describe('buildSiteCssBundle', () => {
     const bundle = buildSiteCssBundle(site, registry)
 
     // Sorted by path ascending: a-first.css before b-second.css.
-    const firstIdx = bundle.userStyles.content.indexOf(':root { --brand: tomato; }')
-    const secondIdx = bundle.userStyles.content.indexOf('body > nav { background: black; }')
+    const firstIdx = bundle.userStyles.content.indexOf(':root{--brand: tomato}')
+    const secondIdx = bundle.userStyles.content.indexOf('body > nav{background: black}')
     expect(firstIdx).toBeGreaterThanOrEqual(0)
     expect(secondIdx).toBeGreaterThan(firstIdx)
     // Non-style files are excluded entirely.
     expect(bundle.userStyles.content).not.toContain('package.json')
-    // Each file is wrapped with a source-path comment so DevTools shows origin.
-    expect(bundle.userStyles.content).toContain('/* src/styles/a-first.css */')
-    expect(bundle.userStyles.content).toContain('/* src/styles/b-second.css */')
+    // Each file is wrapped with a `/*!` source-path comment so DevTools shows
+    // the origin even though the published bundle is minified.
+    expect(bundle.userStyles.content).toContain('/*! src/styles/a-first.css */')
+    expect(bundle.userStyles.content).toContain('/*! src/styles/b-second.css */')
   })
 
   it('userStyles.css is empty when no user stylesheets exist', () => {

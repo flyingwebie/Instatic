@@ -29,7 +29,7 @@ import { useDocumentSync, type DocumentSyncSource } from '../useDocumentSync'
 import { deriveJsCompletionCatalog } from '../completions'
 import { PanelHeader, type PanelHeaderProps } from '../PanelHeader'
 import { CodeEditorSkeleton } from '@site/code-editor'
-import { FormatButton } from '../FormatButton'
+import { FormatButton } from '@site/code-editor/FormatButton'
 import styles from '../EditorColumn.module.css'
 
 const CodeMirrorEditor = lazy(() => import('@site/code-editor/CodeMirrorEditor'))

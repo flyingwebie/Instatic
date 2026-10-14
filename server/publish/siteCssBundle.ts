@@ -37,6 +37,7 @@ import {
   collectSiteStyleBackgroundImagePaths,
   buildSiteFrameworkCss,
   collectUserStylesheetCss,
+  minifyCss,
 } from '@core/publisher'
 import type {
   CssBundleFile,
@@ -186,11 +187,16 @@ function buildFrameworkCss(site: SiteDocument, registry: IModuleRegistry): strin
  *
  * 12-hex-char SHA-256 prefix = 48 bits of entropy ≈ 2.8e14 distinct values.
  * Collision-free for any realistic CMS site count.
+ *
+ * The body is minified first, and the hash is taken over the MINIFIED bytes —
+ * the file served at `/_instatic/css/<bundle>-<hash>.css` is exactly what was
+ * hashed, so a cache entry can never disagree with its URL.
  */
 function makeBundleFile(
   bundle: SiteCssBundleId,
-  content: string,
+  source: string,
 ): CssBundleFile {
+  const content = minifyCss(source)
   const hash = createHash('sha256').update(content).digest('hex').slice(0, 12)
   return {
     bundle,
