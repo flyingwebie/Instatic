@@ -248,6 +248,14 @@ export async function runReadCodeAsset(input: ReadCodeAssetInput): Promise<AiToo
   })
 }
 
+/** A top-level or nested rule whose selector contains a class: `.foo {`, `.a .b:hover {`. */
+const CLASS_RULE_PATTERN = /(^|[}\s,>+~])\.[A-Za-z_-][\w-]*[^{};]*\{/
+
+const STYLE_FILE_CLASS_RULES_WARNING =
+  'This stylesheet file contains class rules. Rules in a file are invisible to the Selectors and CSS panels, ' +
+  'so each element becomes hard to edit. Move page/component styling into style rules: a <style> block via ' +
+  'site_insert_html/site_replace_node_html, or site_apply_css. Keep files only for vendor CSS that must stay verbatim.'
+
 export async function runWriteCodeAsset(input: WriteCodeAssetInput): Promise<AiToolOutput> {
   const store = getStoreState()
   const site = store.site
@@ -296,6 +304,9 @@ export async function runWriteCodeAsset(input: WriteCodeAssetInput): Promise<AiT
     ...(await describeCodeAsset(afterRuntimeStore, finalFile)),
     action,
     dependencies: requestedDependencies.dependencies,
+    ...(input.type === 'style' && CLASS_RULE_PATTERN.test(input.content)
+      ? { warning: STYLE_FILE_CLASS_RULES_WARNING }
+      : {}),
   })
 }
 
