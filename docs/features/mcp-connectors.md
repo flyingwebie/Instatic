@@ -36,6 +36,8 @@ The endpoint uses the official v2 `createMcpHandler` Web-standard entry and serv
 
 The same handler keeps the SDK's `legacy: 'stateless'` fallback enabled. Clients speaking a 2025-era revision may still send an `initialize` request and then make independent authenticated POSTs, but no protocol session is created. This compatibility path can be removed when supported clients have all migrated.
 
+The server advertises `MCP_SERVER_INSTRUCTIONS` (`server/ai/mcp/instructions.ts`) to every client. External agents never see the in-app system prompt, so the styling rule travels with the connection: page and component CSS goes through `site_insert_html` / `site_replace_node_html` / `site_apply_css` so it lands as per-class style rules, never in a `site_write_code_asset type:"style"` file, whose rules the Selectors and CSS panels cannot show.
+
 Every request is bearer-authenticated before the SDK dispatches it. Browser-originated requests are also checked against Instatic's configured public-origin policy before authentication or dispatch; requests without `Origin` remain valid for native and server-to-server MCP clients.
 
 See the official [TypeScript SDK v2 migration guide](https://github.com/modelcontextprotocol/typescript-sdk/blob/main/docs/migration/support-2026-07-28.md), [stable MCP 2026-07-28 specification](https://modelcontextprotocol.io/specification/2026-07-28), and [release changelog](https://modelcontextprotocol.io/specification/2026-07-28/changelog) for the wire revision.

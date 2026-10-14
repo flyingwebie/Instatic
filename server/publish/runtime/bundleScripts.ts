@@ -124,16 +124,53 @@ function uniqueClassicOutputPath(
   return path
 }
 
-function buildClassicRuntimeFiles(
+/**
+ * Build the classic-format script assets.
+ *
+ * Classic scripts are not bundled — they must keep running against browser
+ * globals — so each one goes through a single `esbuild.transform`. That one
+ * pass does both jobs: it surfaces a syntax error as a diagnostic, and for
+ * `publish` it returns the compressed body. `transform` without `bundle`
+ * leaves top-level names alone, so a script that exports itself onto `window`
+ * still resolves after minification.
+ *
+ * On `canvas` the author's bytes are emitted verbatim — a breakpoint has to
+ * land on the line they wrote — and the transform is validation only. A script
+ * that fails to parse is still emitted as written, with its diagnostic
+ * attached, exactly as before.
+ */
+async function buildClassicRuntimeFiles(
   scripts: RuntimeScriptEntry[],
   assetBasePath: string,
-): { files: BuiltRuntimeAssetFile[]; assets: PublishedRuntimeScriptAsset[] } {
+  minify: boolean,
+): Promise<{
+  files: BuiltRuntimeAssetFile[]
+  assets: PublishedRuntimeScriptAsset[]
+  diagnostics: SiteRuntimeDiagnostic[]
+}> {
   const usedPaths = new Set<string>()
   const files: BuiltRuntimeAssetFile[] = []
   const assets: PublishedRuntimeScriptAsset[] = []
+  const diagnostics: SiteRuntimeDiagnostic[] = []
+
+  const compiled = await Promise.all(scripts.map(async (script) => {
+    const source = script.file.content ?? ''
+    try {
+      const result = await esbuild.transform(source, {
+        loader: 'js',
+        logLevel: 'silent',
+        target: ['es2020'],
+        minify,
+      })
+      return { content: minify ? result.code : source, diagnostics: [] as SiteRuntimeDiagnostic[] }
+    } catch (error) {
+      return { content: source, diagnostics: classicScriptDiagnostics(error, script) }
+    }
+  }))
 
   for (const [index, script] of scripts.entries()) {
-    const content = script.file.content ?? ''
+    const { content, diagnostics: scriptDiagnostics } = compiled[index]!
+    diagnostics.push(...scriptDiagnostics)
     const path = uniqueClassicOutputPath(script, index, usedPaths)
     const publicPath = joinPublicPath(assetBasePath, path)
     files.push({
@@ -153,7 +190,7 @@ function buildClassicRuntimeFiles(
     })
   }
 
-  return { files, assets }
+  return { files, assets, diagnostics }
 }
 
 function emptyRuntimeBuild(diagnostics: SiteRuntimeDiagnostic[] = []): SiteRuntimeBuildResult {
@@ -253,31 +290,6 @@ function classicScriptDiagnostics(
   }]
 }
 
-async function validateClassicRuntimeScripts(
-  scripts: RuntimeScriptEntry[],
-): Promise<SiteRuntimeDiagnostic[]> {
-  const diagnosticsByScript = await Promise.all(scripts.map(async (script) => {
-    try {
-      // Classic scripts are emitted byte-for-byte so they retain browser
-      // globals. Parse them separately to catch syntax errors without
-      // changing their published output.
-      await esbuild.transform(script.file.content ?? '', {
-        loader: 'js',
-        logLevel: 'silent',
-        target: ['es2020'],
-      })
-      return []
-    } catch (error) {
-      return classicScriptDiagnostics(error, script)
-    }
-  }))
-  const diagnostics: SiteRuntimeDiagnostic[] = []
-  for (const scriptDiagnostics of diagnosticsByScript) {
-    diagnostics.push(...scriptDiagnostics)
-  }
-  return diagnostics
-}
-
 function selectedScriptByEntryPoint(
   selectedScripts: RuntimeScriptEntry[],
   entryPointByFileId: Map<string, string>,
@@ -312,8 +324,15 @@ export async function buildSiteRuntimeScripts(
 
   const moduleScripts = selectedScripts.filter((entry) => scriptFormat(entry) === 'module')
   const classicScripts = selectedScripts.filter((entry) => scriptFormat(entry) === 'classic')
-  const classicBuild = buildClassicRuntimeFiles(classicScripts, input.assetBasePath)
-  const classicDiagnostics = await validateClassicRuntimeScripts(classicScripts)
+  // Publish output is compressed; the canvas keeps the author's bytes so the
+  // debugger maps to the source they are editing.
+  const minifyOutput = input.target === 'publish'
+  const classicBuild = await buildClassicRuntimeFiles(
+    classicScripts,
+    input.assetBasePath,
+    minifyOutput,
+  )
+  const classicDiagnostics = classicBuild.diagnostics
 
   const packageJson = clonePackageJson(input.site.packageJson ?? DEFAULT_SITE_PACKAGE_JSON)
   const importAnalysis = analyzeRuntimeScriptImports(
@@ -387,6 +406,7 @@ export async function buildSiteRuntimeScripts(
       // output stays minimal — the published surface is read-only and we
       // would otherwise emit map files that no one consumes.
       sourcemap: input.target === 'canvas' ? 'inline' : false,
+      minify: minifyOutput,
       splitting: splitRuntimeChunks,
       target: ['es2020'],
       write: false,

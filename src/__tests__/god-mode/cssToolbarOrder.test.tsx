@@ -1,7 +1,6 @@
 import { afterEach, beforeEach, describe, expect, it, mock } from 'bun:test'
 import { act, cleanup, fireEvent, render, screen, waitFor, within } from '@testing-library/react'
-import { CssToolbar } from '@site/code-dock/css/CssToolbar'
-import { CSS_TOOLBAR_ITEMS, CSS_TOOLBAR_ORDER_KEY } from '@site/code-dock/css/cssToolbarOrder'
+import { CssToolbar, CSS_TOOLBAR_ITEMS, CSS_TOOLBAR_ORDER_KEY } from '@site/code-editor/css-toolbar'
 
 const run = mock(() => {})
 const defaults = CSS_TOOLBAR_ITEMS.map((item) => item.label)

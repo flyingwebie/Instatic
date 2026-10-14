@@ -81,6 +81,8 @@ export { collectUserStylesheetCss } from './userStylesheets'
 
 export { PUBLISHER_RESET_CSS } from './reset'
 
+export { minifyCss } from './minifyCss'
+
 export { resolveAutoSizes } from './sizesResolver'
 
 export type { CssBundleFile, SiteCssBundle, SiteCssBundleId } from './siteCssBundle'

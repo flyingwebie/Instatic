@@ -34,6 +34,7 @@ import { bagToInlineStyle } from './classCss'
 import { collectClassCSS, sanitizeModuleCSS } from './cssCollector'
 import { collectUserStylesheetCss } from './userStylesheets'
 import { PUBLISHER_RESET_CSS } from './reset'
+import { minifyCss } from './minifyCss'
 import { buildSiteFrameworkCss } from './frameworkCss'
 import type { SiteCssBundle } from './siteCssBundle'
 import { escapeHtml, isSafeUrl } from './utils'
@@ -239,10 +240,13 @@ function buildStyleHead(
   // the full assembled CSS so no source (user stylesheet or framework CSS) can
   // break out of the <style> element (ISS-007). sanitizeModuleCSS is idempotent,
   // so re-running it over already-sanitised module CSS is harmless.
+  // Minified for the same reason the external bundle is: this block ships to
+  // every visitor. Sanitisation runs on the minified body so `</style>` cannot
+  // be reassembled by the collapse.
   const allCss = sanitizeModuleCSS(
-    [PUBLISHER_RESET_CSS, frameworkCss, moduleCss, classCss, userCss].filter(Boolean).join('\n'),
+    minifyCss([PUBLISHER_RESET_CSS, frameworkCss, moduleCss, classCss, userCss].filter(Boolean).join('\n')),
   )
-  return `  <style>\n${allCss}\n  </style>\n`
+  return `  <style>${allCss}</style>\n`
 }
 
 /**

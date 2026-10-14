@@ -2,7 +2,7 @@ import { useId, useState } from 'react'
 import { Button } from '@ui/components/Button'
 import { Input } from '@ui/components/Input'
 import { ColorInput } from '@ui/components/ColorInput'
-import type { CssToolbarCommand, CssToolbarContext } from '@site/code-editor/cssToolbarTypes'
+import type { CssToolbarCommand, CssToolbarContext } from '../cssToolbarTypes'
 import type { CssPropertyControl } from './cssToolbarCatalog'
 import styles from './CssToolbar.module.css'
 

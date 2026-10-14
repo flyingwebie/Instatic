@@ -46,7 +46,7 @@ import { DragAndDropSolidIcon } from 'pixel-art-icons/icons/drag-and-drop-solid'
 import { ContextMenu } from '@ui/components/ContextMenu'
 import { CodeEditorSkeleton } from '@site/code-editor'
 import { PanelHeader } from './PanelHeader'
-import { ControlOrderEditor } from './ControlOrderEditor'
+import { ControlOrderEditor } from '@admin/shared/ControlOrderEditor'
 import { loadHtmlPanel, loadCssPanel, loadJsPanel, preloadCodeDock } from './loadCodeDock'
 
 import type { RuntimeScriptValidationState } from '@site/hooks/useRuntimeScriptDiagnostics'

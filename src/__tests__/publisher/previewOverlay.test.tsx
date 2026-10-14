@@ -358,8 +358,8 @@ describe('publishPage — 2-node tree golden test (Phase 7)', () => {
     // Page content
     expect(html).toContain('<h1 class="instatic-heading">Hello World</h1>')
 
-    // CSS injection (deduplicated)
-    expect(html).toContain('.instatic-heading { font-family: sans-serif; margin: 0; }')
+    // CSS injection (deduplicated) — the inline <style> block ships minified.
+    expect(html).toContain('.instatic-heading{font-family: sans-serif;margin: 0}')
 
     // Filename derivation
     expect(filename).toBe('index.html')
@@ -407,8 +407,9 @@ describe('publishPage — 2-node tree golden test (Phase 7)', () => {
     const site = makeSite({ pages: [page] })
     const { html } = publishPage(page, site, regWithContainer)
 
-    // The text-module CSS marker appears exactly once
-    const occurrences = (html.match(/\/\* base\.text \*\//g) ?? []).length
+    // The text-module rule appears exactly once. (Its `/* base.text */` marker
+    // does not survive minification, so match the rule itself.)
+    const occurrences = (html.match(/\.instatic-heading\{/g) ?? []).length
     expect(occurrences).toBe(1)
   })
 

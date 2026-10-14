@@ -455,6 +455,7 @@ Why this matters: selection rings and the floating selection toolbar are portale
 | Docked left-panel host, RightSidebar  | 85      | `sidebars/{Left,Right}Sidebar/` |
 | PropertiesPanel, AgentPanel, undocked left-panel host, shared floating windows | 90 | `panels/`, `sidebars/LeftSidebar/`, `shared/FloatingWindow/` |
 | CodeEditorPanel (floats over sidebars)| 95      | `code-editor/CodeEditorPanel.module.css` |
+| CodeEditorPanel, full screen          | 120     | `code-editor/CodeEditorPanel.module.css` |
 | Toolbar popovers / dropdowns          | 201     | `toolbar/Toolbar.module.css` |
 | PreviewOverlay                        | 400–401 | `preview/PreviewOverlay.module.css` |
 
@@ -573,6 +574,28 @@ The Framework panel's **Type** tab stores Google/custom font assets and editable
 When the user clicks a rule in the Selectors Panel, the Properties Panel switches to **selector-editing mode** — the body shows style controls for that rule directly, and the header renders `SelectorHeader` with the rule's CSS selector, an inline rename input, and a delete button. The delete and rename actions are only shown for non-generated rules and require `site.style.edit`.
 
 When an eligible node is selected on a page canvas (not root, not already a ref, not inside VC mode), a **Componentize** button (`ConvertToComponentButton`) appears next to the class picker. Clicking it, or triggering `openComponentizeEditor(nodeId)` from the layer context menu, opens an inline name-input strip and, on confirmation, calls `convertNodeToComponent(nodeId, name)` to extract the subtree into a new Visual Component. Full details: [`docs/features/visual-components.md`](features/visual-components.md) → "Componentizing existing page content".
+
+### Code editor panel
+
+`src/admin/pages/site/code-editor/CodeEditorPanel.tsx` — the floating editor
+the Explorer's **Code** tab opens a file into (and the surface behind node-prop
+code buffers such as inline SVG). It carries the same toolset as the Code Dock
+panels, because it is editing the same kind of document:
+
+- **Format** (`FormatButton`) — Prettier over the mounted buffer, identical to
+  the dock's action and to the editor's Shift-Alt-F keybinding. Shown for every
+  language Prettier can parse; hidden for `text`.
+- **CSS tools** — a stylesheet file mounts the God Mode `CssToolbar`
+  (`code-editor/css-toolbar/`, shared with the dock's CSS panel) above the
+  buffer: category popups, presets, property editors, rule navigation, and the
+  site's breakpoints as `@media` wrap conditions. See
+  [god-mode.md](features/god-mode.md) → "CSS panel".
+- **Full screen** — toggles `.panelExpanded`, which trades the floating box for
+  the viewport at z-index 120. The CodeMirror subtree is restyled in place,
+  never remounted, so history, folds, scroll and caret survive the toggle;
+  Escape exits. While expanded the header stops acting as a drag handle.
+
+---
 
 ### Sidebar motion model
 

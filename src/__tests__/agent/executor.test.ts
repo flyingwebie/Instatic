@@ -448,6 +448,23 @@ describe('executeAgentTool — code assets', () => {
     expect(useEditorStore.getState().site?.packageJson.dependencies['@motion.page/sdk']).toBe('1.2.4')
   })
 
+  it('write_code_asset warns when a style file carries class rules, not for variables-only CSS', async () => {
+    freshStore()
+    const classy = expectToolData<{ warning?: string }>(await executeAgentTool('site_write_code_asset', {
+      path: 'src/styles/site.css',
+      type: 'style',
+      content: '.compare__icon{border-radius:50%}.compare__after .compare__icon{color:red}',
+    }))
+    expect(classy.warning).toContain('site_apply_css')
+
+    const vars = expectToolData<{ warning?: string }>(await executeAgentTool('site_write_code_asset', {
+      path: 'src/styles/vars.css',
+      type: 'style',
+      content: ':root { --brand: #c2410c; } @media (max-width: 640px) { body { margin: 0 } }',
+    }))
+    expect(vars.warning).toBeUndefined()
+  })
+
   it('write_code_asset creates a runtime stylesheet and inspect_code_runtime shows page applicability', async () => {
     const { rootId } = freshStore()
     await executeAgentTool('site_insert_html', { parentId: rootId, html: '<main><h1>Home</h1></main>' })

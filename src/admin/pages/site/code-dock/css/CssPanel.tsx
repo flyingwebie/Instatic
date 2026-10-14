@@ -29,10 +29,9 @@ import { useDocumentSync, type DocumentSyncSource } from '../useDocumentSync'
 import { deriveCssCompletionCatalog } from '../completions'
 import { PanelHeader, type PanelHeaderProps } from '../PanelHeader'
 import { CodeEditorSkeleton } from '@site/code-editor'
-import { FormatButton } from '../FormatButton'
-import { CssToolbar } from './CssToolbar'
+import { CssToolbar, type CssPreset } from '@site/code-editor/css-toolbar'
+import { FormatButton } from '@site/code-editor/FormatButton'
 import type { CssToolbarCommand, CssToolbarContext } from '@site/code-editor/cssToolbarTypes'
-import type { CssPreset } from './cssToolbarCatalog'
 import {
   deriveCssPanelDocument,
   type CssPanelCanvas,

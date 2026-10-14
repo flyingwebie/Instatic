@@ -438,7 +438,9 @@ describe('public rendering', () => {
     expect(cssRes.headers.get('cache-control')).toContain('immutable')
     expect(cssRes.headers.get('cache-control')).toContain('max-age=31536000')
     const cssBody = await cssRes.text()
-    expect(cssBody).toContain(':where(*, *::before, *::after) { box-sizing: border-box; }')
+    // Bundle bodies ship minified — the hash in the filename is taken over
+    // exactly these bytes.
+    expect(cssBody).toContain(':where(*,*::before,*::after){box-sizing: border-box}')
   })
 
   it('returns 404 for stale CSS hashes so cached HTML refetches the page', async () => {

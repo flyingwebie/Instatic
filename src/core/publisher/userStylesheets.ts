@@ -56,8 +56,13 @@ export function collectUserStylesheetCss(site: SiteDocument, page?: Page): strin
   // Comment-wrap each file body with its source path so DevTools / `view-source`
   // makes the origin obvious. The wrapper is ~80 bytes of fixed overhead per
   // file — trivial relative to a typical user stylesheet.
+  //
+  // `/*!` rather than `/*`: the published bundle is minified (`minifyCss`),
+  // which strips ordinary comments. These markers are worth MORE on a live
+  // minified page than in the canvas — without them nothing says which of the
+  // author's files a rule came from.
   return ordered
-    .map(({ file }) => `/* ${escapeCommentPath(file.path)} */\n${file.content ?? ''}`)
+    .map(({ file }) => `/*! ${escapeCommentPath(file.path)} */\n${file.content ?? ''}`)
     .join('\n\n')
 }
 

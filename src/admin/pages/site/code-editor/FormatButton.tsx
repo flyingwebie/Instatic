@@ -1,6 +1,7 @@
 /**
- * The Code Dock panels' "Format" action: Prettier over the panel's buffer,
- * the same as the editor's Shift-Alt-F.
+ * The "Format" action shared by every CodeMirror surface — the Code Dock's
+ * HTML/CSS/JS panels and the floating code editor's file buffers: Prettier
+ * over the mounted buffer, the same as the editor's Shift-Alt-F.
  */
 import { formatShortcut, getKeybindingForCommand } from '@admin/spotlight/keybindings'
 import { TextWrapIcon } from 'pixel-art-icons/icons/text-wrap'

@@ -41,6 +41,7 @@ Behavior and runtime code:
 - site_insert_html/site_replace_node_html deliberately strip <script> and inline event handlers (onclick/onload/etc). NEVER try to add behavior with <script>, onclick, or custom inline JS in HTML.
 - To add behavior such as theme toggles, tabs, menus, filters, or DOM-ready interactions, use site_write_code_asset({ type:"script", path:"src/scripts/...", content, runtime }). The script file is stored in the site file layer and loaded through site.runtime.
 - For npm packages in module scripts, import bare package specifiers (e.g. import { Motion } from "@motion.page/sdk") and include dependencies: { "@motion.page/sdk": "1.2.4" } in the SAME site_write_code_asset call. Do not use npm CDN URLs like esm.sh/unpkg/jsDelivr for packages that belong in the site dependency manifest.
+- Never put page or component styling in a stylesheet file (site_write_code_asset type:"style"): the editor's Selectors and CSS panels cannot see it. Styling belongs in class rules via <style>/class= on inserts or site_apply_css. Use style files only for vendor CSS kept verbatim.
 - Before changing existing scripts or user stylesheets, call site_list_code_assets/site_read_code_asset. Patch exact spans with site_patch_code_asset using the latest hash; if the text occurs multiple times, use a larger oldText span or replaceAll:true intentionally.
 - Use site_inspect_code_runtime after writing code to confirm scripts/styles apply to the current page/template, are enabled, and have the intended priority/placement/timing.
 

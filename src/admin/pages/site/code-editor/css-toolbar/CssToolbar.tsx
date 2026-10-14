@@ -3,7 +3,7 @@ import { DragAndDropSolidIcon } from 'pixel-art-icons/icons/drag-and-drop-solid'
 import { Button } from '@ui/components/Button'
 import { ContextMenu, ContextMenuItem, MenuSearchHeader } from '@ui/components/ContextMenu'
 import { Separator } from '@ui/components/Separator'
-import type { CssToolbarCommand, CssToolbarContext } from '@site/code-editor/cssToolbarTypes'
+import type { CssToolbarCommand, CssToolbarContext } from '../cssToolbarTypes'
 import {
   CSS_TOOLS,
   CSS_CONDITIONS,
@@ -16,7 +16,7 @@ import {
 import { CSS_TOOLBAR_ICONS } from './cssToolbarIcons'
 import { CssPropertyEditor } from './CssPropertyEditor'
 import { useCssToolbarOrder, CSS_TOOLBAR_ITEMS } from './cssToolbarOrder'
-import { ControlOrderEditor } from '../ControlOrderEditor'
+import { ControlOrderEditor } from '@admin/shared/ControlOrderEditor'
 import styles from './CssToolbar.module.css'
 
 function menuKeys(event: KeyboardEvent<HTMLDivElement>) {
