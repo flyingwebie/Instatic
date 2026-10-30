@@ -44,6 +44,8 @@ export { escapeHtml, isSafeUrl, safeUrl, sanitiseCssValue } from './utils'
 
 export { htmlAttributesAttr } from './htmlAttributesEmit'
 
+export { injectNodeInlineStyles, injectNodeClassIds } from './classInjection'
+
 export {
   bagToCSS,
   bagToInlineStyle,
