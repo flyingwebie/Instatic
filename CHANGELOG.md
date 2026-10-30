@@ -6,6 +6,26 @@ This project is pre-1.0. Breaking changes may appear in minor or patch releases 
 
 ## Unreleased
 
+## 0.0.24 - 2026-10-30
+
+### Publishing and AI
+
+- Published CSS and JavaScript are now minified. Canvas preview builds stay readable.
+- MCP and editor agents are steered to edit style rules rather than raw stylesheet files, and the agent warns when a style file carries class rules that belong in the Selectors panel.
+
+### Upstream sync (CoreBunch/Instatic, post-0.0.21 main)
+
+#### Bug fixes
+
+- Publishing: individual page publishes stay routable; dynamic fragments survive row publication; superseded page versions' runtime assets are pruned; custom media fields resolve on entry routes; links and buttons emit one merged `rel`; safe images stay in published entry bodies; custom properties with underscores or a leading `--_` are kept; `:not()` / `:is()` are read correctly when tree-shaking class rules; invalid props are repaired one by one instead of resetting the node; style and class injection stays out of `data-style` / `data-class`; runtime script bundles are minified.
+- Import: site archives up to the documented limit are accepted; imported pages open in the Site workspace; video sources and posters are uploaded and rewritten; font display survives into the font library; colour and font token `var()` references are rewritten; repeated class rules keep their later cascade position; each style block's open `@media` is closed before joining; unsupported anchor targets map to `_self` / `_blank`; compound submit buttons keep their content.
+- Backups restore published state separately from drafts.
+- Collab: initial sync delivery is preserved under backpressure; presence publishes for users without a display name.
+- MCP: editor-bridge tool calls are delivered serially and hold the lease while calls are pending.
+- Agent: snapshot frames wait on DOM events, and code assets hash without Web Crypto so AI tools work over non-secure origins.
+- Server: static files and uploads answer conditional requests with 304.
+- Media upload queue window stays closed mid-upload; settings reload the cached site after an outside import; runtime previews rebuild after the draft settles; loops sort numeric cells by value; select fields accept the submitted option value; Postgres `ai_messages` content is serialized before insert.
+
 ### Upstream sync (CoreBunch/Instatic 0.0.21)
 
 Upstream released this as 0.0.21 (2026-10-12); the fork already used 0.0.21–0.0.23, so the notes land here.
