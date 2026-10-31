@@ -50,7 +50,6 @@ import {
 import { PlusIcon } from 'pixel-art-icons/icons/plus'
 import { LayoutSolidIcon } from 'pixel-art-icons/icons/layout-solid'
 import { ZapSolidIcon } from 'pixel-art-icons/icons/zap-solid'
-import { ChevronRightIcon } from 'pixel-art-icons/icons/chevron-right'
 import { AdminPageLayout } from '@admin/layouts/AdminPageLayout'
 import { useAuthenticatedAdminUser } from '@admin/sessionContext'
 import { useAdminNavigate } from '@admin/lib/useAdminNavigate'
@@ -69,6 +68,7 @@ import {
   type DashboardItem,
 } from './hooks/useDashboardLayout'
 import { useDashboardWidgets } from './hooks/useDashboardWidgets'
+import { DashboardCrumbs } from './components/DashboardCrumbs'
 import { useOnboardingState } from './hooks/useOnboardingState'
 import { registerFirstPartyDashboardWidgets } from './widgets'
 import { OnboardingPanel } from './components/OnboardingPanel'
@@ -511,11 +511,7 @@ export function DashboardPage() {
         </>
       )}
     >
-      <div className={styles.crumbs}>
-        <span>Admin</span>
-        <ChevronRightIcon size={9} aria-hidden="true" />
-        <span className={styles.crumbsCurrent}>Dashboard</span>
-      </div>
+      <DashboardCrumbs />
 
       {mounted && showOnboarding && (
         <OnboardingPanel facts={facts} onDismiss={dismissOnboarding} onFrameworkImported={refreshOnboarding} />

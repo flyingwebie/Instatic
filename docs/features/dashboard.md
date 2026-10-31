@@ -14,7 +14,7 @@ The Dashboard is the **canonical implementation** of the borderless-tile-card pa
 - Widgets are draggable (move) and resizable (column / row span). Drop targets and resize previews use `--accent-3` for the dashed indicator.
 - Customize mode: dashed outline + bottom-docked `<BlockLibrary>` of unused widgets. Toggled by a top-toolbar button.
 - Layout persists per-user via `useDashboardLayout` (server-side `user_preferences`).
-- Most data-backed widgets stream from `/admin/api/cms/dashboard/<domain>` (`handleDashboardRoutes` -> per-widget readers). AI usage reads `/admin/api/ai/audit`; Domain and Site status are local status tiles today.
+- Most data-backed widgets stream from `/admin/api/cms/dashboard/<domain>` (`handleDashboardRoutes` -> per-widget readers). AI usage reads `/admin/api/ai/audit`. The Status widget's Version row reads `/admin/api/cms/about`; its remaining rows, and the Domain tile, are still local placeholders.
 
 ---
 
@@ -134,7 +134,7 @@ interface DashboardWidgetDefinition {
 | `pages`    | 3             | 3 × 3         | lilac | Published, draft, scheduled, and trailing-week page counts |
 | `posts`    | 3             | 3 × 3         | peach | Total posts, category count, scheduled count, and 28-day bars |
 | `media`    | 3             | 3 × 3         | peach | File count, total bytes, and latest thumbnails |
-| `status`   | 3             | 3 × 3         | mint  | Local site/build/backup/plugin status rows |
+| `status`   | 3             | 3 × 3         | mint  | Instatic version (live) plus placeholder site/build/backup/plugin rows |
 | `activity` | 4             | 6 × 5         | peach | Recent audit-backed admin activity; endpoint requires `audit.read` |
 | `publish`  | 4             | 6 × 5         | sky   | Scheduled, recently published, and draft content rows |
 | `plugins`  | 4             | 6 × 5         | mint  | Installed plugin counts and lifecycle-state rows |
@@ -236,7 +236,7 @@ Non-CMS first-party widgets:
 |--------|-------------|-------|
 | `ai-usage` | `listAiAudit(startOfMonthIso())` -> `/admin/api/ai/audit` | Maps a 403 from missing `ai.audit.read` to a no-permission empty state. |
 | `domain` | Local component rows | Shows the current placeholder primary-domain / HTTPS rows. |
-| `status` | Local component rows | Shows the current placeholder site/build/backup/plugin status rows. |
+| `status` | `useAppVersion` + local rows | The Version row is the running release from `GET /admin/api/cms/about`. The site/build/backup/plugin rows below it are still placeholders and are not wired to anything. |
 
 ### Timezone-aware day bucketing
 

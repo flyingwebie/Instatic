@@ -24,6 +24,7 @@ import {
   type CmsMediaAsset,
 } from '@core/persistence/cmsMedia'
 import { blurHashToDataUrl, pickVariantUrl } from '@admin/pages/media/utils/variants'
+import { useAppVersion } from '@admin/state/appVersion'
 import s from '../SettingsModal.module.css'
 
 // Lazy-load the media picker modal so the Settings modal opens quickly even
@@ -134,7 +135,35 @@ export function GeneralSection() {
           updateSiteSettings({ faviconUrl: next.trim() || undefined })
         }
       />
+
+      <AboutBlock />
     </div>
+  )
+}
+
+/**
+ * The running release. Lives at the foot of General because it is the first
+ * thing anyone is asked for in a bug report, and General is where people look
+ * for "what is this install". Installation identity, not a site setting —
+ * nothing here is editable.
+ */
+function AboutBlock() {
+  const appVersion = useAppVersion()
+
+  return (
+    <section aria-labelledby="gen-about-heading" className={s.sectionBlock}>
+      <h4 id="gen-about-heading" className={s.subHeading}>
+        About
+      </h4>
+      <dl className={s.pubRuntimeList}>
+        <div>
+          <dt>Instatic version</dt>
+          {/* An em dash while the fetch is in flight, and if it failed: the
+              version is decoration here, never worth an error state. */}
+          <dd>{appVersion ? `v${appVersion}` : '—'}</dd>
+        </div>
+      </dl>
+    </section>
   )
 }
 
