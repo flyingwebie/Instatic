@@ -1,17 +1,24 @@
 /**
  * ViewerBody — picks the right viewer for an asset's MIME type.
  *
- * Today: `image/*` → ImageViewer,
- *        `video/*` → VideoViewer,
- *        everything else → FallbackViewer.
+ *   image/*  → ImageViewer
+ *   video/*  → VideoViewer
+ *   audio/*  → AudioViewer
+ *   anything else → FallbackViewer
  *
- * The dispatcher lives in one file so adding a new viewer type later (text,
- * PDF, 3D, …) is a single edit here.
+ * Audio dispatches on the MIME prefix rather than on `bucketForMime`, which
+ * answers the coarser question the grid and the picker ask (is this a picture
+ * or not). Documents and archives stay with the fallback on purpose: they are
+ * served as downloads, so there is nothing to render in place.
+ *
+ * The dispatcher lives in one file so adding a new viewer type later is a
+ * single edit here.
  */
 import type { CmsMediaAsset } from '@core/persistence/cmsMedia'
 import { bucketForMime } from '../../utils/filters'
 import { ImageViewer } from './ImageViewer'
 import { VideoViewer } from './VideoViewer'
+import { AudioViewer } from './AudioViewer'
 import { FallbackViewer } from './FallbackViewer'
 
 interface ViewerBodyProps {
@@ -25,6 +32,9 @@ export function ViewerBody({ asset }: ViewerBodyProps) {
   }
   if (bucket === 'video') {
     return <VideoViewer src={asset.publicPath} />
+  }
+  if (asset.mimeType.startsWith('audio/')) {
+    return <AudioViewer src={asset.publicPath} />
   }
   return (
     <FallbackViewer

@@ -15,6 +15,7 @@ import {
 import { Button } from '@ui/components/Button'
 import { EmptyState } from '@ui/components/EmptyState'
 import { FileUpload } from '@ui/components/FileUpload'
+import { useUploadAccept } from '@admin/state/uploadPolicy'
 import { FilterBar, type FilterBarItem } from '@ui/components/FilterBar'
 import { Select } from '@ui/components/Select'
 import { Skeleton } from '@ui/components/Skeleton'
@@ -122,6 +123,9 @@ function folderMatchesQuery(folder: CmsMediaFolder, query: string): boolean {
 
 export function MediaCanvas({ workspace, selectionMode = 'standard' }: MediaCanvasProps) {
   const currentUser = useCurrentAdminUser()
+  // Narrows the OS file dialog to what this installation actually accepts, so
+  // a user does not pick a file only to have the server reject the bytes.
+  const uploadAccept = useUploadAccept()
   const [viewMode, setViewModeState] = useState<MediaViewMode>(readStoredMediaViewMode)
   const [contextMenu, setContextMenu] = useState<ContextMenuState | null>(null)
   const [renameTarget, setRenameTarget] = useState<CmsMediaAsset | null>(null)
@@ -332,6 +336,7 @@ export function MediaCanvas({ workspace, selectionMode = 'standard' }: MediaCanv
           searchLeading={!trashView && canWrite && (
             <FileUpload
               multiple
+              accept={uploadAccept}
               onChange={(e) => void handleUpload(e)}
               buttonProps={{
                 variant: 'primary',

@@ -63,6 +63,7 @@ const adminCapabilities: CoreCapability[] = [
   'media.write',
   'media.replace',
   'media.delete',
+  'media.policy.manage',
   'runtime.dependencies',
   'storage.elect',
   'storage.migrate',

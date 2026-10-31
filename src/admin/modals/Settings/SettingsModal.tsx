@@ -25,11 +25,13 @@ import { Kbd } from '@ui/components/Kbd'
 import { SettingsCogSolidIcon } from 'pixel-art-icons/icons/settings-cog-solid'
 import { CommandIcon } from 'pixel-art-icons/icons/command'
 import { UploadIcon } from 'pixel-art-icons/icons/upload'
+import { CloudUploadSolidIcon } from 'pixel-art-icons/icons/cloud-upload-solid'
 import { SlidersHorizontalIcon } from 'pixel-art-icons/icons/sliders-horizontal'
 import { GeneralSection } from './sections/GeneralSection'
 import { PublishingSection } from './sections/PublishingSection'
 import { ShortcutsSection } from './sections/ShortcutsSection'
 import { PreferencesSection } from './sections/PreferencesSection'
+import { UploadsSection } from './sections/UploadsSection'
 import s from './SettingsModal.module.css'
 
 // ─── Nav items ────────────────────────────────────────────────────────────────
@@ -41,6 +43,7 @@ const NAV_ITEMS = [
   { id: 'general',     label: 'General',     icon: SettingsCogSolidIcon,  accent: 'lilac' },
   { id: 'shortcuts',   label: 'Shortcuts',   icon: CommandIcon,           accent: 'sky'   },
   { id: 'publishing',  label: 'Publishing',  icon: UploadIcon,            accent: 'mint'  },
+  { id: 'uploads',     label: 'Uploads',     icon: CloudUploadSolidIcon,  accent: 'rose'  },
   { id: 'preferences', label: 'Preferences', icon: SlidersHorizontalIcon, accent: 'peach' },
 ] as const
 
@@ -266,6 +269,7 @@ export function SettingsModal() {
               {activeSection === 'general'     && <GeneralSection />}
               {activeSection === 'shortcuts'   && <ShortcutsSection />}
               {activeSection === 'publishing'  && <PublishingSection />}
+              {activeSection === 'uploads'     && <UploadsSection />}
               {activeSection === 'preferences' && <PreferencesSection />}
             </div>
           </div>

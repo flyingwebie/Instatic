@@ -91,6 +91,7 @@ The Data workspace is split from the Content workspace: Content owns row-level e
 | `media.write`    | Upload assets; edit metadata (alt text, caption, tags); manage folders; restore from trash. | Owner, Admin |
 | `media.replace`  | Overwrite the bytes for an existing asset (variants regenerate). Split out from `media.write` because this silently swaps the bytes every page reference points at. | Owner, Admin |
 | `media.delete`   | Soft-delete to trash; hard-purge (`?purge=1`) additionally requires step-up. Also gates `DELETE /media/folders/:id` (cascade). | Owner, Admin |
+| `media.policy.manage` | Change which file types the media library accepts (Settings → Uploads, `PUT /media/upload-policy`). Split out from `media.write` because widening the allow-list decides what bytes the installation will store at all — a posture decision, not day-to-day editing. Reading the policy only needs `media.read`. | Owner, Admin |
 
 ### Runtime + storage (granular split)
 

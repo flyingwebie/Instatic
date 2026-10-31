@@ -74,6 +74,7 @@ function makeFakeDb() {
   ]
   const sessions: Record<string, unknown>[] = []
   const media: Record<string, unknown>[] = []
+  let uploadPolicyMimes: string[] | null = null
 
   const handle = async <Row extends Record<string, unknown> = Record<string, unknown>>(
     strings: TemplateStringsArray,
@@ -116,6 +117,17 @@ function makeFakeDb() {
     // a folder; return an empty result set.
     if (normalized.includes('from media_asset_folders')) {
       return { rows: [], rowCount: 0 }
+    }
+
+    // Upload policy — `getMediaUploadPolicy` issues this on every upload to
+    // learn which MIMEs this installation accepts. `uploadPolicyMimes`
+    // defaults to null, i.e. no row, which the repository resolves as "never
+    // configured" → the catalogue defaults. A test that wants to narrow the
+    // allow-list sets it before the request.
+    if (normalized.includes('from media_upload_policy')) {
+      return uploadPolicyMimes === null
+        ? { rows: [], rowCount: 0 }
+        : { rows: [{ allowed_mimes_json: uploadPolicyMimes } as Row], rowCount: 1 }
     }
 
     // Media storage adapter election lookup — `getElectedAdapterId` issues
@@ -251,7 +263,15 @@ function makeFakeDb() {
   handle.transaction = async <T>(cb: (tx: DbClient) => Promise<T>): Promise<T> =>
     cb(handle as unknown as DbClient)
 
-  return Object.assign(handle as DbClient, { admins, sessions, media })
+  return Object.assign(handle as DbClient, {
+    admins,
+    sessions,
+    media,
+    /** Narrow the upload allow-list for one test. `null` = no stored row. */
+    setUploadPolicy(mimes: string[] | null) {
+      uploadPolicyMimes = mimes
+    },
+  })
 }
 
 async function createCookie(db: ReturnType<typeof makeFakeDb>): Promise<string> {
@@ -432,10 +452,18 @@ describe('CMS media handlers', () => {
   })
 
   // F-0002 regression: stored XSS via spoofed Content-Type was the entry
-  // point. The upload handler MUST reject any file whose actual bytes do
-  // not match an accepted image/video signature, regardless of what the
-  // client claimed in the multipart `Content-Type` header.
-  it('rejects an HTML payload that lies about its Content-Type as image/png (F-0002)', async () => {
+  // point. The multipart `Content-Type` the client sends is never consulted;
+  // the MIME comes from the bytes.
+  //
+  // Since the library accepts plain text, HTML bytes are no longer refused
+  // outright — they are recognised for what they are (UTF-8 text) and stored
+  // as `.txt`. That is NOT a reopening of F-0002: the attack needed the file
+  // to come back as `text/html` from the admin origin, and all three legs of
+  // that are gone — the claimed `image/png` is ignored, the server picks the
+  // on-disk extension, and `/uploads/*` serves `text/plain` with `nosniff`,
+  // `default-src 'none'` and `Content-Disposition: attachment`
+  // (`hardenUploadResponse`, covered in `security-headers.test.ts`).
+  it('never lets an HTML payload keep its claimed image type or its extension (F-0002)', async () => {
     const db = makeFakeDb()
     const cookie = await createCookie(db)
     const uploadsDir = mkdtempSync(join(tmpdir(), 'instatic-uploads-'))
@@ -443,6 +471,44 @@ describe('CMS media handlers', () => {
     const body = new FormData()
     // Attacker plants `<script>` HTML but sets the multipart Content-Type
     // to `image/png`. Old code accepted this and wrote `pwn.html` to disk.
+    body.set(
+      'file',
+      new File(['<!doctype html><script>alert(1)</script>'], 'pwn.html', { type: 'image/png' }),
+    )
+
+    try {
+      const res = await handleCmsRequest(
+        cmsRequest('http://localhost/admin/api/cms/media', {
+          method: 'POST',
+          headers: { cookie },
+          formData: body,
+        }),
+        db,
+        { uploadsDir },
+      )
+
+      expect(res.status).toBe(201)
+      const payload = await res.json() as { asset: { mimeType: string } }
+      // The claimed image/png is discarded; the bytes are text.
+      expect(payload.asset.mimeType).toBe('text/plain')
+      // And `.html` never reaches disk — the static handler maps extension
+      // to Content-Type, so this is the leg that actually closed F-0002.
+      expect(extname(String(db.media[0].storage_path))).toBe('.txt')
+    } finally {
+      rmSync(uploadsDir, { recursive: true, force: true })
+    }
+  })
+
+  // The same payload against an installation whose admin has turned text
+  // off: the allow-list is consulted after sniffing, so the file is refused
+  // and the message names what IS accepted.
+  it('refuses a file whose sniffed type is not in the upload policy', async () => {
+    const db = makeFakeDb()
+    db.setUploadPolicy(['image/png', 'image/jpeg'])
+    const cookie = await createCookie(db)
+    const uploadsDir = mkdtempSync(join(tmpdir(), 'instatic-uploads-'))
+    mediaStorageRegistry.configureLocalDisk({ uploadsDir })
+    const body = new FormData()
     body.set(
       'file',
       new File(['<!doctype html><script>alert(1)</script>'], 'pwn.html', { type: 'image/png' }),

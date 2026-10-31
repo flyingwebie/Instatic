@@ -96,6 +96,10 @@ export const CAPABILITY_META: Record<CoreCapability, CapabilityMeta> = {
     label: 'Delete media',
     description: 'Soft-delete assets to trash; hard-purge (also requires step-up) removes the bytes from disk.',
   },
+  'media.policy.manage': {
+    label: 'Choose allowed upload types',
+    description: 'Change which file types the media library accepts (Settings → Uploads). Decides what bytes this installation will store at all.',
+  },
   // ---------------------------------------------------------------------
   // Runtime + storage — split from the old monolithic `runtime.manage`
   // ---------------------------------------------------------------------

@@ -1532,4 +1532,20 @@ export const sqliteMigrations: Migration[] = [
       alter table data_tables add column created_by_plugin_id text;
     `,
   },
+  {
+    // ─── Media upload policy (singleton) ──────────────────────────────────
+    //
+    // SQLite mirror of the Postgres migration. JSON columns end in `_json`
+    // so the SQLite adapter auto-parses on read and stringifies on write
+    // (see CLAUDE.md "Database dialect rules").
+    id: '033_media_upload_policy',
+    sql: `
+      create table if not exists media_upload_policy (
+        singleton integer primary key default 1 check (singleton = 1),
+        allowed_mimes_json text not null,
+        updated_at text not null default (strftime('%Y-%m-%dT%H:%M:%fZ','now')),
+        updated_by_user_id text references users(id) on delete set null
+      );
+    `,
+  },
 ]

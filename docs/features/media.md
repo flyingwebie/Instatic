@@ -267,7 +267,8 @@ Plugins enter this same pipeline through `api.cms.media.upsert(...)`. Only sourc
 POST /admin/api/cms/media
     │
     ▼
-mediaUpload.ts             ← validates upload (size + magic-byte MIME sniff)
+mediaUpload.ts             ← validates upload (size + allow-list; the
+    │                       byte sniffing itself lives in mediaSniff.ts)
     │
     ▼
 mediaUploadDispatch.ts     ← dispatches to the elected storage adapter
@@ -305,7 +306,31 @@ Ladder edge rules: the intrinsic rung is clamped so neither output dimension exc
 
 The image-variant worker pool is sized by `IMAGE_VARIANT_WORKER_POOL_SIZE` (default 2, hard cap 8). Workers are spawned lazily on first use and reused for the life of the process; a crashed worker is dropped from the pool and a replacement spawns on the next submission.
 
-Defense in depth on the static path: `hardenUploadResponse` in `server/static.ts` adds `X-Content-Type-Options: nosniff` and `Content-Disposition: attachment` for non-inert MIME types so a stray non-allowlisted upload can't be top-level navigated and rendered as HTML on the admin origin.
+Defense in depth on the static path: `hardenUploadResponse` in `server/static.ts` adds `X-Content-Type-Options: nosniff`, `Content-Security-Policy: default-src 'none'`, and `Content-Disposition: attachment` for non-inert MIME types so a stray non-allowlisted upload can't be top-level navigated and rendered as HTML on the admin origin.
+
+### Accepted file types
+
+Two separate questions, answered in two places:
+
+- **Which types the server can verify at all** — the catalogue in [`src/core/media-types/catalog.ts`](../../src/core/media-types/catalog.ts). One row per type: canonical MIME, the extension the server writes on disk, a display label, a group, whether a fresh installation enables it, and whether `/uploads/*` may serve it inline.
+- **Which types THIS installation accepts** — the `media_upload_policy` singleton row, read through `server/repositories/mediaUploadPolicy.ts` and edited in **Settings → Uploads**. No row means "never configured", which resolves to the catalogue defaults; a row holding `[]` means an admin deliberately turned everything off and every upload is refused.
+
+The catalogue covers images (JPEG, PNG, GIF, WebP, AVIF, SVG), video (MP4, WebM), audio (MP3, WAV, Ogg), web fonts (WOFF, WOFF2, TrueType, OpenType), documents (PDF, plain text, Markdown, CSV, RTF, Word, Excel, PowerPoint, OpenDocument) and ZIP archives. Documents, images, video and fonts are on by default; audio and archives are opt-in.
+
+The reason a PDF or an Office file is safe to store is **not** the sniffing — it is that none of them is ever served inline. `inline: true` in the catalogue is limited to the passive image / video / audio formats; everything else (SVG, PDF, Office, OpenDocument, ZIP) is served as a download under a zero-permission CSP, so the browser never executes it on the admin origin. `INERT_UPLOAD_MIMES` in `server/static.ts` is derived from that flag rather than restated, so the two can't drift.
+
+Detection (`detectAcceptedMime` in `server/handlers/cms/mediaSniff.ts` — split out of `mediaUpload.ts` so "what is this file?" and "what do we do with it?" are separate modules) runs four passes, and the order is load-bearing:
+
+1. **Concrete magic-byte signatures** — one signature, one MIME. PNG, JPEG, GIF, WebP, AVIF, MP4, WebM, WAV, Ogg, MP3, the four font formats, PDF (`%PDF-`) and RTF (`{\rtf1`).
+2. **Container signatures.** A ZIP (`PK\x03\x04`) is classified by its member names: an ODF package by the uncompressed `mimetype` entry the spec mandates at offset 30, OOXML by `word/document.xml` / `xl/workbook.xml` / `ppt/presentation.xml`, everything else as a plain ZIP. An OLE compound file (`D0CF11E0…`) is shared by every pre-2007 Office format and cannot be told apart from its bytes.
+3. **The SVG text probe** — XML prolog or a top-level `<svg`. Must precede pass 4 so an SVG never gets demoted to `text/plain` and skips DOMPurify.
+4. **The generic UTF-8 text probe** — the catch-all for `.txt` / `.md` / `.csv`. Must be last: PDF in particular starts with printable ASCII.
+
+Two families — legacy Office, and text — resolve their concrete MIME from the uploaded **filename's** extension once the bytes have proven the family. That is not a hole in "never trust the client": the extension picks a label, never a capability. Every member of each family gets the same download-only treatment, so the worst a lie achieves is an `.xls` listed as `.doc`. The on-disk extension still comes from the catalogue entry for the detected MIME, never from the upload.
+
+Adding a type is deliberately two edits — a catalogue row **and** a detector — because a row with no detector would be a type the Settings UI offers and the server always rejects. `mediaUploadDetection.test.ts` fails if the two drift apart.
+
+**Endpoints.** `GET /admin/api/cms/media/upload-policy` (`media.read`, because the Media workspace needs it to build the file picker's `accept` list) and `PUT` the same path (`media.policy.manage`). Both return the selection alongside the server's catalogue, so a client running against a different build renders what that build can actually verify.
 
 ### Storage adapters
 
