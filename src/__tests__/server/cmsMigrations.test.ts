@@ -2,7 +2,7 @@ import { describe, expect, it } from 'bun:test'
 import { Database } from 'bun:sqlite'
 import { pgMigrations } from '../../../server/db/migrations-pg'
 import { sqliteMigrations } from '../../../server/db/migrations-sqlite'
-import { SYSTEM_ROLES } from '../../../server/auth/capabilities'
+import { FORCE_SYNC_ROLE_IDS, SYSTEM_ROLES } from '../../../server/auth/capabilities'
 
 describe('CMS migrations', () => {
   it('creates the required CMS tables', () => {
@@ -59,12 +59,31 @@ describe('CMS migrations', () => {
     expect(sql).not.toContain('site_singleton')
   })
 
-  it('seeds the expected system roles in both dialects', () => {
+  it('seeds every system role in both dialects', () => {
     const pgSql = pgMigrations.map((m) => m.sql).join('\n')
     const sqliteSql = sqliteMigrations.map((m) => m.sql).join('\n')
     for (const role of SYSTEM_ROLES) {
       expect(pgSql).toContain(`'${role.slug}'`)
       expect(sqliteSql).toContain(`'${role.slug}'`)
+    }
+  })
+
+  it('seeds the full capability list for the roles the boot sync does not own', () => {
+    // Owner and Admin are in FORCE_SYNC_ROLE_IDS: `syncSystemRoles` rewrites
+    // their capability lists from `SYSTEM_ROLES` on every boot, immediately
+    // after migrations run. Their seeded lists are an initial snapshot by
+    // design (the baseline migration says so in its own comment), and the
+    // baseline is frozen — so asserting that a newly added capability appears
+    // in it would be demanding an edit to a committed migration, which this
+    // repo forbids.
+    //
+    // Client and Member ARE seeded once and never resynced, so for those the
+    // seed is authoritative and every capability must be present.
+    const pgSql = pgMigrations.map((m) => m.sql).join('\n')
+    const sqliteSql = sqliteMigrations.map((m) => m.sql).join('\n')
+    const seedOwnedRoles = SYSTEM_ROLES.filter((role) => !FORCE_SYNC_ROLE_IDS.includes(role.id))
+    expect(seedOwnedRoles.length).toBeGreaterThan(0)
+    for (const role of seedOwnedRoles) {
       for (const capability of role.capabilities) {
         expect(pgSql).toContain(capability)
         expect(sqliteSql).toContain(capability)

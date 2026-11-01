@@ -1410,4 +1410,25 @@ export const pgMigrations: Migration[] = [
       alter table data_tables add column created_by_plugin_id text;
     `,
   },
+  {
+    // ─── Media upload policy (singleton) ──────────────────────────────────
+    //
+    // Which file types the media library accepts, as a list of canonical
+    // MIMEs drawn from `@core/media-types`. One row per installation; its
+    // absence means "never configured" and the catalogue defaults apply, so
+    // an existing install picks up the newly-supported document types on
+    // upgrade without an admin having to opt in.
+    //
+    // Deliberately NOT part of the site shell: media assets are installation-
+    // wide, not per-branch, so a branch switch must not change what uploads.
+    id: '033_media_upload_policy',
+    sql: `
+      create table if not exists media_upload_policy (
+        singleton integer primary key default 1 check (singleton = 1),
+        allowed_mimes_json jsonb not null,
+        updated_at timestamptz not null default now(),
+        updated_by_user_id text references users(id) on delete set null
+      );
+    `,
+  },
 ]

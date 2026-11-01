@@ -5,8 +5,8 @@
  * direct-token shell, an `--bg-surface-2` rail with categorical accent
  * icon chips, an accent-bar section header, and a shared `Esc` keycap
  * affordance (backdrop click / Esc both close — there is no dedicated close
- * button). After the consistency pass the modal carries four sections:
- * General, Shortcuts, Publishing, Preferences.
+ * button). The modal carries five sections: General, Shortcuts, Publishing,
+ * Uploads, Preferences.
  *
  * ─── Test groups ────────────────────────────────────────────────────────────
  *   1.  Render gating  — modal hidden when closed, visible when open
@@ -216,12 +216,12 @@ describe('SettingsModal — backdrop', () => {
 // ---------------------------------------------------------------------------
 
 describe('SettingsModal — section navigation', () => {
-  it('renders exactly 4 nav items (general, shortcuts, publishing, preferences)', () => {
+  it('renders exactly 5 nav items (general, shortcuts, publishing, uploads, preferences)', () => {
     openModal()
     render(<SettingsModal />)
     const nav = screen.getByRole('navigation', { name: /settings sections/i })
     const navBtns = Array.from(nav.querySelectorAll('button'))
-    expect(navBtns.length).toBe(4)
+    expect(navBtns.length).toBe(5)
   })
 
   it('renders nav items with the current section labels', () => {
@@ -233,6 +233,7 @@ describe('SettingsModal — section navigation', () => {
     expect(within(nav).getByText('General')).toBeDefined()
     expect(within(nav).getByText('Shortcuts')).toBeDefined()
     expect(within(nav).getByText('Publishing')).toBeDefined()
+    expect(within(nav).getByText('Uploads')).toBeDefined()
     expect(within(nav).getByText('Preferences')).toBeDefined()
     // Dropped sections — moved to their dedicated controls.
     expect(within(nav).queryByText('Pages')).toBeNull()

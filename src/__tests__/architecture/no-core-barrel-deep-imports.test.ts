@@ -12,6 +12,7 @@
  *   - `@core/fonts`
  *   - `@core/collab`
  *   - `@core/registry`
+ *   - `@core/media-types`
  *
  * Per the barrel convention (CLAUDE.md → "Barrel imports"): everything OUTSIDE
  * a module imports through its barrel; files INSIDE the module import each
@@ -41,6 +42,7 @@ const BARRELLED_MODULES = [
   'collab',
   'cssProjection',
   'registry',
+  'media-types',
 ]
 
 // Scan production + test sources in both the app and the server.

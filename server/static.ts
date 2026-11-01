@@ -2,31 +2,50 @@ import { extname, resolve, sep } from 'node:path'
 import { brotliCompressSync, constants as zlibConstants } from 'node:zlib'
 import { readdirSync } from 'node:fs'
 import { SESSION_COOKIE_NAME } from './auth/tokens'
+import { MEDIA_TYPE_CATALOG } from '@core/media-types'
 
-const MIME_TYPES: Record<string, string> = {
+/**
+ * Extension → Content-Type for everything this server hands back as a static
+ * file. Two sources, deliberately kept apart:
+ *
+ *   - the build/app assets below, which only this server emits;
+ *   - every uploadable media type, folded in from `@core/media-types` so the
+ *     served Content-Type can never drift from the MIME the upload pipeline
+ *     verified the bytes against. The upload handler writes the catalogue's
+ *     extension; this table reads the same row back.
+ *
+ * `text/*` entries from the catalogue pick up `; charset=utf-8` — the upload
+ * probe only accepts a text file once it has decoded as UTF-8, so declaring
+ * it is accurate and keeps a browser from guessing a legacy codepage.
+ */
+const APP_MIME_TYPES: Record<string, string> = {
   '.css': 'text/css; charset=utf-8',
   '.html': 'text/html; charset=utf-8',
   '.js': 'text/javascript; charset=utf-8',
   '.json': 'application/json; charset=utf-8',
-  '.gif': 'image/gif',
-  '.jpg': 'image/jpeg',
-  '.jpeg': 'image/jpeg',
   '.map': 'application/json; charset=utf-8',
-  '.mp4': 'video/mp4',
-  '.avif': 'image/avif',
-  '.png': 'image/png',
-  '.svg': 'image/svg+xml',
-  '.webm': 'video/webm',
-  '.webp': 'image/webp',
-  '.woff': 'font/woff',
-  '.woff2': 'font/woff2',
-  '.ttf': 'font/ttf',
-  '.otf': 'font/otf',
+}
+
+const MIME_TYPES: Record<string, string> = {
+  ...APP_MIME_TYPES,
+  ...Object.fromEntries(
+    MEDIA_TYPE_CATALOG.map((def) => [
+      def.extension,
+      def.mime.startsWith('text/') ? `${def.mime}; charset=utf-8` : def.mime,
+    ]),
+  ),
+  // The pipeline normalises every JPEG to `.jpg`, but files written before
+  // that normalisation (and plugin-shipped assets) still use `.jpeg`.
+  '.jpeg': 'image/jpeg',
 }
 
 // Mime types worth compressing. Already-compressed binary formats (woff2, png,
-// jpg, mp4, webp, webm) gain nothing and would burn CPU.
-const COMPRESSIBLE_EXTENSIONS = new Set(['.css', '.html', '.js', '.json', '.svg', '.map'])
+// jpg, mp4, webp, webm, and every ZIP-backed document container) gain nothing
+// and would burn CPU. Plain-text documents do compress well, so they are in.
+const COMPRESSIBLE_EXTENSIONS = new Set([
+  '.css', '.html', '.js', '.json', '.svg', '.map',
+  '.txt', '.md', '.csv', '.rtf',
+])
 
 // Below this size compression overhead (extra response bytes for headers,
 // CPU cost) outweighs the savings.
@@ -586,23 +605,21 @@ export async function serveAdminApp(staticDir: string, req?: Request): Promise<R
 
 /**
  * MIMEs we trust to render inline from `/uploads/*` without forcing a
- * download prompt. Strict by design: only the modern image/video formats
- * the upload handler accepts via magic-byte detection.
+ * download prompt — the catalogue's passive image/video/audio formats.
+ *
+ * Read straight off `@core/media-types` rather than restated here, because
+ * the two lists answer the same question and a copy would eventually drift:
+ * the `inline` flag is what makes it safe to ACCEPT the active formats at
+ * all. SVG, PDF, Office documents and archives are all `inline: false`.
  *
  * Anything else served from `/uploads/*` is forced to `Content-Disposition:
- * attachment` so a future regression (or a legacy file written before the
- * extension hardening) can't be top-level navigated to and rendered as
- * HTML on the admin origin.
+ * attachment` so neither an accepted active format, nor a legacy file written
+ * before the extension hardening, can be top-level navigated to and rendered
+ * on the admin origin.
  */
-const INERT_UPLOAD_MIMES = new Set([
-  'image/jpeg',
-  'image/png',
-  'image/gif',
-  'image/webp',
-  'image/avif',
-  'video/mp4',
-  'video/webm',
-])
+const INERT_UPLOAD_MIMES = new Set<string>(
+  MEDIA_TYPE_CATALOG.filter((def) => def.inline).map((def) => def.mime),
+)
 
 /**
  * Defense-in-depth headers for `/uploads/*` responses:

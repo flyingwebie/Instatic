@@ -632,14 +632,17 @@ The sidebar shell expands/collapses by animating `--*-panel-width`. The panel sl
 
 `src/admin/modals/Settings/SettingsModal.tsx`. Shares the visual language of the Spotlight palette and Module Inserter: a direct-token panel shell, `--bg-surface-2` rail with categorical accent icon chips, accent-bar section header, card-group rows (`--bg-surface-2` fills, `--panel-radius` corners, 1px gaps showing the darker panel surface through) for section content, and an Esc keycap affordance. Backdrop click and Esc both close — there is no dedicated close button.
 
-**Sections** (rail nav, four entries):
+**Sections** (rail nav, five entries):
 
 | Section       | What it contains                                                             |
 |---------------|------------------------------------------------------------------------------|
-| General       | Site name, meta title, meta description, language, favicon                   |
+| General       | Site name, meta title, meta description, language, favicon, About (running version) |
 | Shortcuts     | Auto-rendered keyboard shortcut reference from the keybindings registry       |
 | Publishing    | Self-hosted runtime info + framework CSS tree-shaking toggle                 |
+| Uploads       | Which file types the media library accepts (`media.policy.manage`)           |
 | Preferences   | Catalog-driven editor preferences (auto-rendered from `PREFERENCE_CATALOG`)  |
+
+**Uploads** is the odd one out: it does not go through `useSiteSettingsController`, because the allow-list is installation-wide rather than part of the `SiteDocument` (media assets are not branch-scoped, so a branch switch must not change what uploads). It reads and writes `media_upload_policy` through the `uploadPolicy` store — see [`docs/features/media.md`](features/media.md) → "Accepted file types".
 
 Site-specific controls that were previously sections of this modal (Pages roster, Breakpoints/Viewports, Conditions) now live in their dedicated surfaces: the Site Explorer panel and `CanvasContextSelector` (unified condition axis).
 
@@ -768,7 +771,7 @@ See [docs/features/plugin-system.md](features/plugin-system.md) for the plugin S
   - `src/admin/state/useWorkspaceLayoutPersistence.ts` — non-site workspace layout persistence hook
   - `src/admin/shared/OpenLivePageButton/OpenLivePageButton.tsx` — toolbar "Open live page" icon button
   - `src/admin/pages/site/hooks/useActiveLivePath.ts` — resolves `activeLivePath` for the Site editor (including template → previewed page/post mapping)
-  - `src/admin/modals/Settings/SettingsModal.tsx` — settings modal (4 sections: General, Shortcuts, Publishing, Preferences)
+  - `src/admin/modals/Settings/SettingsModal.tsx` — settings modal (5 sections: General, Shortcuts, Publishing, Uploads, Preferences)
   - `src/admin/modals/Settings/useSiteSettingsController.ts` — uniform site-settings source for General/Publishing (editor draft on the Site editor, `cmsAdapter` everywhere else)
   - `src/admin/pages/site/store/slices/settingsSlice.ts` — settings modal state + adminUi bridge
   - `src/admin/state/useSiteSummary.ts` — lightweight site name/favicon fetch for non-editor layouts

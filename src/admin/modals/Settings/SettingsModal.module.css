@@ -64,6 +64,12 @@
   --settingsAccent: var(--accent-4);
 }
 
+.panel[data-accent="rose"],
+.navItem[data-accent="rose"],
+.sectionHeader[data-accent="rose"] {
+  --settingsAccent: var(--accent-5);
+}
+
 .srOnly {
   position: absolute;
   width: 1px;

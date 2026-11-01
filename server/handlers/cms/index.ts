@@ -33,6 +33,7 @@ import { resolveBranchScope } from '../../branches/scope'
 import type { CmsHandlerOptions } from './shared'
 import { handleBranchesRoutes } from './branches'
 import { handleSetupRoutes } from './setup'
+import { handleAboutRoutes } from './about'
 import { handleAuthRoutes } from './auth'
 import { handleMeRoutes } from './me'
 import { handleUserPreferencesRoutes } from './userPreferences'
@@ -90,6 +91,9 @@ export async function handleCmsRequest(
   // session.)
   const accountResponse =
     (await handleSetupRoutes(req, db))
+    // `/about` is branch-agnostic installation identity, so it joins the
+    // account groups that run before the branch header is resolved.
+    ?? (await handleAboutRoutes(req, db))
     ?? (await handleMeRoutes(req, db, options))
     ?? (await handleAuthRoutes(req, db))
     // User preferences sit next to /me/* because they share the same

@@ -1,0 +1,14 @@
+.root {
+  display: flex;
+  flex: 1 1 auto;
+  align-items: center;
+  justify-content: center;
+  min-height: 0;
+  padding: var(--space-l);
+  background: var(--bg-body);
+}
+
+.audio {
+  width: 100%;
+  max-width: 480px;
+}

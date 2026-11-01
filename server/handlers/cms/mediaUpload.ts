@@ -17,6 +17,22 @@
  * asset role) and consume the persisted `MediaAsset` row. Keeping the
  * byte-level checks in one place is a security-critical invariant — any
  * handler that uploads media MUST go through `acceptUploadedMedia`.
+ *
+ * WHICH types exist is not decided here: the catalogue lives in
+ * `@core/media-types` and the per-installation allow-list in
+ * `media_upload_policy`. This module decides only whether the BYTES are what
+ * the caller's allow-list says they must be. The two halves of accepting a
+ * file type are therefore a catalogue entry plus a signature below; one
+ * without the other is unreachable.
+ *
+ * Deciding WHAT a file is belongs to `./mediaSniff.ts`; this module decides
+ * what to do with that answer. On accepting formats with an active surface
+ * (PDF, Office, SVG, archives):
+ * none of them is ever served inline. `hardenUploadResponse` sends everything
+ * outside the passive image/video/audio set as `Content-Disposition:
+ * attachment` under `Content-Security-Policy: default-src 'none'` and
+ * `nosniff`, so the browser downloads the file instead of rendering it on the
+ * admin origin. That — not the sniffing — is what makes them safe to store.
  */
 import { basename } from 'node:path'
 import { nanoid } from 'nanoid'
@@ -39,39 +55,12 @@ import {
   MediaStorageDispatchError,
 } from './mediaUploadDispatch'
 import { sanitizeSvgBytes } from './svgSanitize'
-
-/**
- * Whitelist of media MIMEs we accept — keys are the canonical MIME, values
- * are the server-chosen on-disk extension. The static handler maps file
- * extension → Content-Type, so picking the extension here is what guarantees
- * the served Content-Type.
- *
- * SVG is allowed but goes through DOMPurify (SVG profile) before storage so
- * any `<script>`, foreignObject, or javascript:/data: URLs are stripped.
- * Fonts are static binaries with reliable magic bytes and no script surface.
- *
- * Notably absent: `application/pdf` (browsers may render PDFs inline with
- * embedded JS), anything HTML/CSS/JS adjacent.
- */
-export const EXTENSION_FOR_MIME = {
-  'image/jpeg': '.jpg',
-  'image/png': '.png',
-  'image/gif': '.gif',
-  'image/webp': '.webp',
-  'image/avif': '.avif',
-  'image/svg+xml': '.svg',
-  'video/mp4': '.mp4',
-  'video/webm': '.webm',
-  // Web fonts — referenced from @font-face inside imported stylesheets. All
-  // four formats are pure binary containers with no script surface; magic
-  // bytes are reliable per the OpenType / WOFF specs.
-  'font/woff': '.woff',
-  'font/woff2': '.woff2',
-  'font/ttf': '.ttf',
-  'font/otf': '.otf',
-} as const
-
-type AcceptedMediaMime = keyof typeof EXTENSION_FOR_MIME
+import {
+  extensionForMime,
+  mediaMimesInGroup,
+  type MediaMime,
+} from '@core/media-types'
+import { detectAcceptedMime } from './mediaSniff'
 
 /**
  * Hard ceiling on any single media upload, shared by every surface that
@@ -80,108 +69,34 @@ type AcceptedMediaMime = keyof typeof EXTENSION_FOR_MIME
  */
 export const MAX_MEDIA_BYTES = 50 * 1024 * 1024
 
-export const IMAGE_MIMES: ReadonlyArray<AcceptedMediaMime> = [
-  'image/jpeg',
-  'image/png',
-  'image/gif',
-  'image/webp',
-  'image/avif',
-  'image/svg+xml',
-]
+/** The image subset — avatars and the MCP upload tool accept only these. */
+export const IMAGE_MIMES: ReadonlyArray<MediaMime> = mediaMimesInGroup('image')
 
-const RESPONSIVE_VARIANT_MIMES: ReadonlySet<AcceptedMediaMime> = new Set([
+const RESPONSIVE_VARIANT_MIMES: ReadonlySet<string> = new Set([
   'image/jpeg',
   'image/png',
   'image/webp',
   'image/avif',
 ])
 
-function shouldProcessResponsiveVariants(mime: AcceptedMediaMime): boolean {
+function shouldProcessResponsiveVariants(mime: MediaMime): boolean {
   return RESPONSIVE_VARIANT_MIMES.has(mime)
 }
 
 /**
- * Magic-byte signatures for each accepted MIME. Each signature is a list of
- * `(offset, byte)` constraints — the file passes the signature if every
- * constraint is satisfied. Some formats (WebP, MP4) need non-contiguous
- * checks (`RIFF....WEBP`, `....ftyp`), hence the offset list rather than a
- * single contiguous prefix match.
- */
-type MagicConstraint = readonly [offset: number, byte: number]
-
-const MEDIA_MAGIC_SIGNATURES: ReadonlyArray<{
-  mime: AcceptedMediaMime
-  bytes: ReadonlyArray<MagicConstraint>
-}> = [
-  // PNG: 89 50 4E 47 0D 0A 1A 0A
-  { mime: 'image/png', bytes: [[0, 0x89], [1, 0x50], [2, 0x4e], [3, 0x47], [4, 0x0d], [5, 0x0a], [6, 0x1a], [7, 0x0a]] },
-  // JPEG: FF D8 FF (SOI marker followed by any APPx marker)
-  { mime: 'image/jpeg', bytes: [[0, 0xff], [1, 0xd8], [2, 0xff]] },
-  // GIF87a / GIF89a
-  { mime: 'image/gif', bytes: [[0, 0x47], [1, 0x49], [2, 0x46], [3, 0x38], [4, 0x37], [5, 0x61]] },
-  { mime: 'image/gif', bytes: [[0, 0x47], [1, 0x49], [2, 0x46], [3, 0x38], [4, 0x39], [5, 0x61]] },
-  // WebP: RIFF<size>WEBP — bytes 0..3 = RIFF, bytes 8..11 = WEBP
-  { mime: 'image/webp', bytes: [[0, 0x52], [1, 0x49], [2, 0x46], [3, 0x46], [8, 0x57], [9, 0x45], [10, 0x42], [11, 0x50]] },
-  // AVIF: ISO Base Media `ftyp` box with `avif` as the major brand. Keep this
-  // before MP4: MP4's broader `ftyp` signature also matches every AVIF file.
-  { mime: 'image/avif', bytes: [[4, 0x66], [5, 0x74], [6, 0x79], [7, 0x70], [8, 0x61], [9, 0x76], [10, 0x69], [11, 0x66]] },
-  // MP4 / ISO Base Media: `ftyp` box at offset 4..7. The first 4 bytes are
-  // the box size which varies; only the type identifier matters here.
-  { mime: 'video/mp4', bytes: [[4, 0x66], [5, 0x74], [6, 0x79], [7, 0x70]] },
-  // WebM: EBML header 1A 45 DF A3 (also Matroska — close enough for us;
-  // the content-type we serve is video/webm regardless and browsers will
-  // refuse to play non-webm Matroska, which is the desired outcome).
-  { mime: 'video/webm', bytes: [[0, 0x1a], [1, 0x45], [2, 0xdf], [3, 0xa3]] },
-
-  // WOFF: 77 4F 46 46 ("wOFF") per W3C WOFF1 §3.
-  { mime: 'font/woff', bytes: [[0, 0x77], [1, 0x4f], [2, 0x46], [3, 0x46]] },
-  // WOFF2: 77 4F 46 32 ("wOF2") per W3C WOFF2 §3.
-  { mime: 'font/woff2', bytes: [[0, 0x77], [1, 0x4f], [2, 0x46], [3, 0x32]] },
-  // TTF / TrueType: 00 01 00 00 (sfnt scaler type) OR "true" / "ttcf" (rare).
-  { mime: 'font/ttf', bytes: [[0, 0x00], [1, 0x01], [2, 0x00], [3, 0x00]] },
-  { mime: 'font/ttf', bytes: [[0, 0x74], [1, 0x72], [2, 0x75], [3, 0x65]] }, // "true"
-  // OTF / OpenType with CFF outlines: 4F 54 54 4F ("OTTO") per OpenType §6.
-  { mime: 'font/otf', bytes: [[0, 0x4f], [1, 0x54], [2, 0x54], [3, 0x4f]] },
-]
-
-/**
- * SVG is text-based (XML), not a magic-byte format, so it can't be detected
- * by the binary sniffer above. Decode the first ~512 bytes as UTF-8 and look
- * for the XML prolog or a top-level `<svg` opening tag, allowing an optional
- * BOM and leading whitespace. Returns `'image/svg+xml'` when matched.
+ * The extension the server appends to an upload's on-disk name. Always the
+ * catalogue's value for the DETECTED MIME, never anything the client sent —
+ * the static handler maps extension back to Content-Type, so this call is
+ * what guarantees a `.html` payload can never be served as `text/html`.
  *
- * This is intentionally lenient — the **security** boundary is the
- * subsequent DOMPurify pass (SVG profile) which strips `<script>`,
- * `<foreignObject>`, `javascript:` / `data:` URLs, and on-* handlers
- * regardless of how the file claims to be structured.
+ * The MIME reaching here has already been produced by `detectAcceptedMime`,
+ * so a missing catalogue entry would mean the two tables had drifted apart;
+ * that is a programming error, not a request the user can make.
  */
-function detectSvgMime(bytes: Uint8Array): AcceptedMediaMime | null {
-  // Decode the first 512 bytes; bigger files just look at the prefix.
-  const slice = bytes.subarray(0, Math.min(bytes.length, 512))
-  const decoder = new TextDecoder('utf-8', { fatal: false, ignoreBOM: true })
-  const head = decoder.decode(slice).trimStart()
-  if (head.startsWith('<?xml') || head.startsWith('<svg')) {
-    return 'image/svg+xml'
-  }
-  return null
-}
-
-export function detectAcceptedMime(bytes: Uint8Array): AcceptedMediaMime | null {
-  for (const sig of MEDIA_MAGIC_SIGNATURES) {
-    let matches = true
-    for (const [offset, expected] of sig.bytes) {
-      if (offset >= bytes.length || bytes[offset] !== expected) {
-        matches = false
-        break
-      }
-    }
-    if (matches) return sig.mime
-  }
-  // Fallback to text-based detection for SVG — checked LAST so a corrupted
-  // binary file that happens to start with `<svg` can't be misidentified;
-  // the binary signatures above would have matched first if the bytes were
-  // actually a binary format.
-  return detectSvgMime(bytes)
+function uploadExtension(mime: MediaMime): string {
+  const extension = extensionForMime(mime)
+  if (!extension) throw new Error(`[mediaUpload] no extension registered for detected MIME "${mime}"`)
+  return extension
 }
 
 /**
@@ -228,8 +143,8 @@ interface AcceptUploadInput {
   file: File
   /** Hard ceiling on body size — caller picks the policy per surface. */
   maxBytes: number
-  /** Subset of `EXTENSION_FOR_MIME` the caller is willing to accept. */
-  allowedMimes: ReadonlyArray<AcceptedMediaMime>
+  /** Subset of the media type catalogue the caller is willing to accept. */
+  allowedMimes: ReadonlyArray<MediaMime>
   /**
    * Asset role — picked per call site so the dispatcher resolves the right
    * elected adapter ('original' for the media library, 'avatar' for the
@@ -248,7 +163,7 @@ interface AcceptUploadInput {
 
 interface ValidatedUpload {
   bytes: Uint8Array
-  detectedMime: AcceptedMediaMime
+  detectedMime: MediaMime
 }
 
 /**
@@ -265,7 +180,7 @@ async function validateUploadedMedia(input: AcceptUploadInput): Promise<Response
   // attacker-controlled in any non-browser HTTP client). Reject anything
   // that doesn't match a known signature OR isn't in the caller's allow-list.
   let bytes = new Uint8Array(await input.file.arrayBuffer())
-  const detectedMime = detectAcceptedMime(bytes)
+  const detectedMime = detectAcceptedMime(bytes, input.file.name)
   if (!detectedMime || !input.allowedMimes.includes(detectedMime)) {
     return badRequest(input.unsupportedMessage)
   }
@@ -310,8 +225,8 @@ export async function acceptUploadedMedia(
   // Server-chosen extension on the on-disk filename so the static handler's
   // extension→Content-Type lookup can only ever yield the verified inert
   // MIME we just sniffed. Client-supplied extension is dropped.
-  const storageName = `${safeStorageStem(input.file.name)}${EXTENSION_FOR_MIME[validated.detectedMime]}`
-  const suggestedStoragePath = buildSuggestedStoragePath(safeStorageStem(input.file.name), EXTENSION_FOR_MIME[validated.detectedMime])
+  const storageName = `${safeStorageStem(input.file.name)}${uploadExtension(validated.detectedMime)}`
+  const suggestedStoragePath = buildSuggestedStoragePath(safeStorageStem(input.file.name), uploadExtension(validated.detectedMime))
 
   let dispatched
   try {
@@ -403,8 +318,8 @@ export async function acceptReplacementMedia(
   // old files are guaranteed to be orphaned regardless of width overlap.
   const previousVariants = await getMediaAssetVariants(db, assetId)
 
-  const storageName = `${safeStorageStem(input.file.name)}${EXTENSION_FOR_MIME[validated.detectedMime]}`
-  const suggestedStoragePath = buildSuggestedStoragePath(safeStorageStem(input.file.name), EXTENSION_FOR_MIME[validated.detectedMime])
+  const storageName = `${safeStorageStem(input.file.name)}${uploadExtension(validated.detectedMime)}`
+  const suggestedStoragePath = buildSuggestedStoragePath(safeStorageStem(input.file.name), uploadExtension(validated.detectedMime))
 
   let dispatched
   try {

@@ -10,6 +10,7 @@ import { useState, type ChangeEvent } from 'react'
 import { Button } from '@ui/components/Button'
 import { Dialog } from '@ui/components/Dialog'
 import { FileUpload } from '@ui/components/FileUpload'
+import { useUploadAccept } from '@admin/state/uploadPolicy'
 import { UploadIcon } from 'pixel-art-icons/icons/upload'
 import type { CmsMediaAsset } from '@core/persistence/cmsMedia'
 import { formatBytes } from '@admin/lib/formatBytes'
@@ -50,6 +51,7 @@ async function confirmReplace(
 }
 
 export function ReplaceFileDialog({ asset, open, onClose, onReplace }: ReplaceFileDialogProps) {
+  const uploadAccept = useUploadAccept()
   const [picked, setPicked] = useState<File | null>(null)
   const [busy, setBusy] = useState(false)
   const [error, setError] = useState<string | null>(null)
@@ -108,6 +110,7 @@ export function ReplaceFileDialog({ asset, open, onClose, onReplace }: ReplaceFi
 
       <div className={styles.picker}>
         <FileUpload
+          accept={uploadAccept}
           onChange={handlePick}
           buttonProps={{
             variant: 'secondary',

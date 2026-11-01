@@ -54,7 +54,7 @@ export const CAPABILITY_GROUPS: CapabilityGroup[] = [
   },
   {
     title: 'Media',
-    capabilities: ['media.read', 'media.write', 'media.replace', 'media.delete'],
+    capabilities: ['media.read', 'media.write', 'media.replace', 'media.delete', 'media.policy.manage'],
   },
   {
     title: 'Runtime & storage',

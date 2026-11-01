@@ -4,9 +4,14 @@
  *   GET    /admin/api/cms/media                — list every uploaded asset
  *                                                  (?trash=1 → trashed items only)
  *                                                  (`media.read`)
- *   POST   /admin/api/cms/media                — upload a new image/video
+ *   POST   /admin/api/cms/media                — upload a new asset
  *                                                  (multipart `file=`, max 50MB)
  *                                                  (`media.write`)
+ *   GET    /admin/api/cms/media/upload-policy  — which file types this
+ *                                                  installation accepts
+ *                                                  (`media.read`)
+ *   PUT    /admin/api/cms/media/upload-policy  — change them
+ *                                                  (`media.policy.manage`)
  *   PATCH  /admin/api/cms/media/:id            — rename / edit metadata
  *                                                  (`media.write`)
  *   DELETE /admin/api/cms/media/:id            — soft delete by default,
@@ -53,18 +58,22 @@ import { Type } from '@core/utils/typeboxHelpers'
 import { CMS_API_PREFIX } from './shared'
 import { runRouteTable, type Route, type RouteParams } from './routeTable'
 import {
-  EXTENSION_FOR_MIME,
   MAX_MEDIA_BYTES,
   acceptReplacementMedia,
   acceptUploadedMedia,
   readUploadForm,
 } from './mediaUpload'
+import {
+  getMediaUploadPolicy,
+  setAllowedUploadMimes,
+} from '../../repositories/mediaUploadPolicy'
+import {
+  ALL_MEDIA_MIMES,
+  DEFAULT_ALLOWED_MEDIA_MIMES,
+  describeAllowedMediaTypes,
+} from '@core/media-types'
 import { removeMediaAssetFiles } from './mediaVariants'
 import { materializeAssetListForClient } from '../../publish/mediaPresentation'
-
-const MEDIA_LIBRARY_MIMES = Object.keys(EXTENSION_FOR_MIME) as Array<
-  keyof typeof EXTENSION_FOR_MIME
->
 
 const MEDIA_PREFIX = `${CMS_API_PREFIX}/media`
 
@@ -151,18 +160,70 @@ async function handleUploadMedia(req: Request, db: DbClient): Promise<Response> 
   const { file, altText } = await readUploadForm(req)
   if (!file) return badRequest('Missing file')
 
+  const allowedMimes = (await getMediaUploadPolicy(db)).allowedMimes
   const result = await acceptUploadedMedia(db, {
     file,
     maxBytes: MAX_MEDIA_BYTES,
-    allowedMimes: MEDIA_LIBRARY_MIMES,
+    allowedMimes,
     role: 'original',
     uploadedByUserId: user.id,
     ...(altText !== undefined ? { altText } : {}),
     oversizedMessage: 'File exceeds the 50 MB hard limit',
-    unsupportedMessage: 'Only JPEG, PNG, GIF, WebP, SVG, MP4, WebM, and web font (WOFF, WOFF2, TTF, OTF) files can be uploaded',
+    unsupportedMessage: describeAllowedMediaTypes(allowedMimes, { settingsHint: true }),
   })
   if (result instanceof Response) return result
   return jsonResponse({ asset: result }, { status: 201 })
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
+// Upload policy
+// ─────────────────────────────────────────────────────────────────────────────
+
+/**
+ * Reading the policy only needs `media.read`: the Media workspace uses it to
+ * build the file picker's `accept` list, so every user who can upload must be
+ * able to see it. Changing it is a separate, narrower grant — widening the
+ * allow-list decides what bytes this installation will store, which is a
+ * security posture decision and not part of day-to-day media editing.
+ *
+ * The response carries the whole catalogue, not just the enabled subset, so
+ * Settings can render every switch without a second source of truth on the
+ * client.
+ */
+async function handleReadUploadPolicy(req: Request, db: DbClient): Promise<Response> {
+  const user = await requireCapability(req, db, 'media.read')
+  if (user instanceof Response) return user
+
+  const policy = await getMediaUploadPolicy(db)
+  return jsonResponse({
+    allowedMimes: policy.allowedMimes,
+    isDefault: policy.isDefault,
+    catalogMimes: ALL_MEDIA_MIMES,
+    defaultMimes: DEFAULT_ALLOWED_MEDIA_MIMES,
+  })
+}
+
+const UploadPolicyBodySchema = Type.Object({
+  allowedMimes: Type.Array(Type.String()),
+})
+
+async function handleWriteUploadPolicy(req: Request, db: DbClient): Promise<Response> {
+  const user = await requireCapability(req, db, 'media.policy.manage')
+  if (user instanceof Response) return user
+
+  const body = await readValidatedBody(req, UploadPolicyBodySchema)
+  if (!body) return badRequest('Invalid request body')
+
+  // Unknown MIMEs are dropped rather than rejected: the client sends back the
+  // catalogue it was rendered from, and a client running against a newer or
+  // older server should still be able to save the types both agree on.
+  const policy = await setAllowedUploadMimes(db, body.allowedMimes, user.id)
+  return jsonResponse({
+    allowedMimes: policy.allowedMimes,
+    isDefault: policy.isDefault,
+    catalogMimes: ALL_MEDIA_MIMES,
+    defaultMimes: DEFAULT_ALLOWED_MEDIA_MIMES,
+  })
 }
 
 async function handleRestoreMedia(
@@ -192,14 +253,15 @@ async function handleReplaceMedia(
   const { file } = await readUploadForm(req)
   if (!file) return badRequest('Missing file')
 
+  const allowedMimes = (await getMediaUploadPolicy(db)).allowedMimes
   const result = await acceptReplacementMedia(db, params.id, {
     file,
     maxBytes: MAX_MEDIA_BYTES,
-    allowedMimes: MEDIA_LIBRARY_MIMES,
+    allowedMimes,
     role: 'original',
     uploadedByUserId: user.id,
     oversizedMessage: 'File exceeds the 50 MB hard limit',
-    unsupportedMessage: 'Only JPEG, PNG, GIF, WebP, SVG, MP4, WebM, and web font (WOFF, WOFF2, TTF, OTF) files can be uploaded',
+    unsupportedMessage: describeAllowedMediaTypes(allowedMimes, { settingsHint: true }),
   })
   if (result instanceof Response) return result
   return jsonResponse({ asset: result })
@@ -288,6 +350,10 @@ const ID_PATTERN = '(?<id>[^/]+)'
 const MEDIA_ROUTES: readonly Route<[]>[] = [
   { method: 'GET', pattern: MEDIA_PREFIX, handler: handleListMedia },
   { method: 'POST', pattern: MEDIA_PREFIX, handler: handleUploadMedia },
+  // Declared ahead of the `:id` routes: `upload-policy` is a literal segment
+  // that would otherwise be captured as an asset id by a same-method route.
+  { method: 'GET', pattern: `${MEDIA_PREFIX}/upload-policy`, handler: handleReadUploadPolicy },
+  { method: 'PUT', pattern: `${MEDIA_PREFIX}/upload-policy`, handler: handleWriteUploadPolicy },
   {
     method: 'POST',
     pattern: new RegExp(`^${MEDIA_PREFIX}/${ID_PATTERN}/restore$`),

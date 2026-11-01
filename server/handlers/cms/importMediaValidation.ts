@@ -15,7 +15,8 @@
  */
 import { extname, join, relative, sep } from 'node:path'
 import { assertPathWithin } from '../../util/pathWithin'
-import { detectAcceptedMime, EXTENSION_FOR_MIME } from './mediaUpload'
+import { detectAcceptedMime } from './mediaSniff'
+import { extensionForMime } from '@core/media-types'
 import { sanitizeSvgBytes } from './svgSanitize'
 
 /**
@@ -96,7 +97,7 @@ export function validateAndSanitizeMediaBytes(
   bytes: Uint8Array,
   asset: ImportMediaDescriptor,
 ): Uint8Array {
-  const detectedMime = detectAcceptedMime(bytes)
+  const detectedMime = detectAcceptedMime(bytes, asset.storagePath)
   if (!detectedMime) {
     throw new ImportMediaValidationError(
       `Media entry "${asset.storagePath}" has unrecognised file content; cannot verify MIME type`,
@@ -115,7 +116,7 @@ export function validateAndSanitizeMediaBytes(
   // detected MIME. The static handler maps file extension → Content-Type, so a
   // mismatched extension (e.g. correct SVG bytes named `exploit.html`) would
   // override the DB row's mimeType when the file is served.
-  const expectedExt = EXTENSION_FOR_MIME[detectedMime as keyof typeof EXTENSION_FOR_MIME]
+  const expectedExt = extensionForMime(detectedMime)
   const actualExt = extname(asset.storagePath).toLowerCase()
   if (expectedExt && actualExt !== expectedExt) {
     throw new ImportMediaValidationError(

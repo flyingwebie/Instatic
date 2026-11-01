@@ -16,7 +16,9 @@ import {
   resolveMediaWriteTarget,
   validateAndSanitizeMediaBytes,
 } from '../importMediaValidation'
-import { detectAcceptedMime, EXTENSION_FOR_MIME, IMAGE_MIMES } from '../mediaUpload'
+import { IMAGE_MIMES } from '../mediaUpload'
+import { detectAcceptedMime } from '../mediaSniff'
+import { extensionForMime } from '@core/media-types'
 
 const enc = new TextEncoder()
 
@@ -31,7 +33,7 @@ const AVIF_MAGIC = new Uint8Array([
 describe('validateAndSanitizeMediaBytes — content gate', () => {
   it('accepts AVIF as an image upload instead of misclassifying it as MP4', () => {
     expect(detectAcceptedMime(AVIF_MAGIC)).toBe('image/avif')
-    expect(Object.entries(EXTENSION_FOR_MIME)).toContainEqual(['image/avif', '.avif'])
+    expect(extensionForMime('image/avif')).toBe('.avif')
     expect(IMAGE_MIMES).toContain('image/avif')
   })
 

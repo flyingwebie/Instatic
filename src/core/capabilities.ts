@@ -43,11 +43,16 @@ export const CORE_CAPABILITIES = [
   'content.publish.own',
   'content.publish.any',
   'content.manage',
-  // Media — granular split (read/write/replace/delete).
+  // Media — granular split (read/write/replace/delete + upload policy).
   'media.read',
   'media.write',
   'media.replace',
   'media.delete',
+  // Which file types the installation accepts. Split from `media.write`
+  // because widening the allow-list is a security posture decision, not an
+  // everyday editing action — an editor who can upload must not be able to
+  // decide that this installation now stores, say, archives.
+  'media.policy.manage',
   // Runtime + storage — split out of the old `runtime.manage`.
   'runtime.dependencies',
   'storage.elect',
