@@ -7,6 +7,7 @@ import {
   type PatchCodeAssetInput,
   type ReadCodeAssetInput,
   type WriteCodeAssetInput,
+  type WritePageScriptInput,
 } from '@core/ai'
 import type { SiteFile } from '@core/files/schemas'
 import { isSafePath, normalizePath } from '@core/files/pathValidation'
@@ -15,6 +16,7 @@ import {
   DEFAULT_SCRIPT_RUNTIME_CONFIG,
   DEFAULT_STYLE_RUNTIME_CONFIG,
   assetScopeAppliesToPage,
+  findPageScript,
   normalizeScriptRuntimeConfig,
   normalizeSiteRuntimeConfig,
   normalizeStyleRuntimeConfig,
@@ -142,7 +144,7 @@ function setRuntimeForCodeAsset(
 }
 
 function normalizeRequestedRuntimeDependencies(
-  input: WriteCodeAssetInput,
+  input: { type: CodeAssetType; dependencies?: Record<string, string> },
 ): { ok: true; dependencies: Record<string, string> } | { ok: false; error: string } {
   const entries = Object.entries(input.dependencies ?? {})
   if (entries.length === 0) return { ok: true, dependencies: {} }
@@ -259,6 +261,23 @@ const STYLE_FILE_CLASS_RULES_WARNING =
   'so each element becomes hard to edit. Move page/component styling into style rules: a <style> block via ' +
   'site_insert_html/site_replace_node_html, or site_apply_css. Keep files only for vendor CSS that must stay verbatim.'
 
+/**
+ * A new script must say where it loads. The runtime default is every page,
+ * which is wrong for most behavior (a slider, a form, an animation lives on
+ * one page), so the agent has to choose instead of inheriting it silently.
+ */
+const NEW_SCRIPT_SCOPE_REQUIRED =
+  'A new script needs an explicit runtime.scope so it only loads where it is used. ' +
+  'For behavior on one page, use site_write_page_script instead (the page script the God Mode JS panel edits). ' +
+  'For several pages pass runtime.scope { type:"pages", pageIds:[...] }; for a template pass ' +
+  '{ type:"templates", templatePageIds:[...] }; only behavior every page needs (site-wide nav, analytics) should use { type:"all-pages" }.'
+
+function setRuntimeDependencies(dependencies: Record<string, string>): void {
+  for (const [name, version] of Object.entries(dependencies)) {
+    getStoreState().setDependency(name, version, false)
+  }
+}
+
 export async function runWriteCodeAsset(input: WriteCodeAssetInput): Promise<AiToolOutput> {
   const store = getStoreState()
   const site = store.site
@@ -283,6 +302,9 @@ export async function runWriteCodeAsset(input: WriteCodeAssetInput): Promise<AiT
     fileId = existing.id
     action = 'updated'
   } else {
+    if (input.type === 'script' && input.runtime?.scope === undefined) {
+      return aiToolError(NEW_SCRIPT_SCOPE_REQUIRED)
+    }
     fileId = store.createFile(path, input.type, input.content)
     action = 'created'
   }
@@ -293,10 +315,7 @@ export async function runWriteCodeAsset(input: WriteCodeAssetInput): Promise<AiT
     return aiToolError(`Code asset write failed for ${path}.`)
   }
   setRuntimeForCodeAsset(afterContentStore, file, input.runtime)
-
-  for (const [name, version] of Object.entries(requestedDependencies.dependencies)) {
-    getStoreState().setDependency(name, version, false)
-  }
+  setRuntimeDependencies(requestedDependencies.dependencies)
 
   const afterRuntimeStore = getStoreState()
   const finalFile = afterRuntimeStore.site?.files.find((candidate) => candidate.id === fileId)
@@ -310,6 +329,55 @@ export async function runWriteCodeAsset(input: WriteCodeAssetInput): Promise<AiT
     ...(input.type === 'style' && CLASS_RULE_PATTERN.test(input.content)
       ? { warning: STYLE_FILE_CLASS_RULES_WARNING }
       : {}),
+  })
+}
+
+/**
+ * Write the page script: the script scoped to exactly one page, which the God
+ * Mode JS panel edits. Creates it on first write (file + page scope in one
+ * undo step, same as the panel) and replaces its content afterwards.
+ */
+export function runWritePageScript(input: WritePageScriptInput): AiToolOutput {
+  const store = getStoreState()
+  const site = store.site
+  if (!site) return aiToolError('No active site.')
+
+  let pageId = input.pageId
+  if (!pageId) {
+    if (store.activeDocument?.kind === 'visualComponent') {
+      return aiToolError(
+        'A Visual Component has no page script. Pass pageId for the page that uses it, or open that page first.',
+      )
+    }
+    pageId = activeRenderPage(store)?.id
+  }
+  if (!pageId) return aiToolError('No active page. Pass pageId.')
+  if (!site.pages.some((page) => page.id === pageId)) return aiToolError(`Page not found: ${pageId}`)
+
+  const requestedDependencies = normalizeRequestedRuntimeDependencies({
+    type: 'script',
+    dependencies: input.dependencies,
+  })
+  if (!requestedDependencies.ok) return aiToolError(requestedDependencies.error)
+
+  const existing = findPageScript(site.files, store.siteRuntime, pageId)
+  let fileId: string
+  if (existing) {
+    store.updateFileContent(existing.id, input.content)
+    fileId = existing.id
+  } else {
+    fileId = store.createPageScript(pageId, input.content)
+  }
+  setRuntimeDependencies(requestedDependencies.dependencies)
+
+  const after = getStoreState()
+  const file = after.site?.files.find((candidate) => candidate.id === fileId)
+  if (!file || !isCodeAssetFile(file)) return aiToolError(`Page script write failed for page ${pageId}.`)
+  return aiToolOk({
+    ...describeCodeAsset(after, file),
+    pageId,
+    action: existing ? 'updated' : 'created',
+    dependencies: requestedDependencies.dependencies,
   })
 }
 

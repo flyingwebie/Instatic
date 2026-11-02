@@ -1,6 +1,11 @@
 import { describe, expect, it } from 'bun:test'
 import { resolveBridgeToolResult } from '../runtime'
-import { createEditorBridgeStream, getEditorBridgeForUser, hasEditorBridge } from './editorBridge'
+import {
+  createEditorBridgeStream,
+  getEditorWorkspace,
+  hasEditorBridge,
+  waitForEditorWorkspace,
+} from './editorBridge'
 
 const dec = new TextDecoder()
 
@@ -28,7 +33,7 @@ async function readUntil(
 describe('editor bridge', () => {
   it('registers a bridge for the user on connect and clears it on disconnect', async () => {
     const userId = `u_${Math.floor(performance.now())}`
-    expect(getEditorBridgeForUser(userId, 'site')).toBeNull()
+    expect(getEditorWorkspace(userId, 'site')?.bridge ?? null).toBeNull()
     expect(hasEditorBridge(userId, 'site')).toBe(false)
 
     const ctrl = new AbortController()
@@ -36,12 +41,12 @@ describe('editor bridge', () => {
     const reader = stream.getReader()
     const ready = await readUntil(reader, (e) => e.type === 'bridgeReady')
     expect(typeof ready.bridgeId).toBe('string')
-    expect(getEditorBridgeForUser(userId, 'site')).not.toBeNull()
+    expect(getEditorWorkspace(userId, 'site')?.bridge ?? null).not.toBeNull()
 
     ctrl.abort()
     // Give the abort listener a tick to run.
     await reader.read().catch(() => {})
-    expect(getEditorBridgeForUser(userId, 'site')).toBeNull()
+    expect(getEditorWorkspace(userId, 'site')?.bridge ?? null).toBeNull()
   })
 
   it('relays a tool call to the stream and resolves on the result POST', async () => {
@@ -52,7 +57,7 @@ describe('editor bridge', () => {
     const ready = await readUntil(reader, (e) => e.type === 'bridgeReady')
     const bridgeId = ready.bridgeId as string
 
-    const bridge = getEditorBridgeForUser(userId, 'site')!
+    const bridge = getEditorWorkspace(userId, 'site')!.bridge
     const callPromise = bridge.callBrowser('site_insert_html', { html: '<p>hi</p>' })
 
     const toolRequest = await readUntil(reader, (e) => e.type === 'toolRequest')
@@ -130,5 +135,71 @@ describe('editor bridge', () => {
 
     await secondReader.cancel()
     expect(hasEditorBridge(userId, 'site')).toBe(false)
+  })
+
+  it('keeps routing to the newest-opened tab when an older tab reconnects', async () => {
+    const userId = `u_${Math.floor(performance.now())}_tabs`
+    const olderCtrl = new AbortController()
+    const older = createEditorBridgeStream(userId, 'site', olderCtrl.signal, { tabId: 'older' }).getReader()
+    await readUntil(older, (e) => e.type === 'bridgeReady')
+
+    const newerCtrl = new AbortController()
+    const newer = createEditorBridgeStream(userId, 'site', newerCtrl.signal, { tabId: 'newer' }).getReader()
+    const newerReady = await readUntil(newer, (e) => e.type === 'bridgeReady')
+
+    // The older tab's stream recycles and reconnects with the same tabId.
+    olderCtrl.abort()
+    await older.read().catch(() => {})
+    const olderAgainCtrl = new AbortController()
+    const olderAgain = createEditorBridgeStream(userId, 'site', olderAgainCtrl.signal, { tabId: 'older' }).getReader()
+    await readUntil(olderAgain, (e) => e.type === 'bridgeReady')
+
+    const call = getEditorWorkspace(userId, 'site')!.bridge.callBrowser('probe', {})
+    const request = await readUntil(newer, (e) => e.type === 'toolRequest')
+    expect(resolveBridgeToolResult(newerReady.bridgeId as string, request.requestId as string, { ok: true })).toBe(true)
+    expect((await call).ok).toBe(true)
+
+    // Closing the active tab hands the workspace to the remaining one.
+    newerCtrl.abort()
+    await newer.read().catch(() => {})
+    expect(hasEditorBridge(userId, 'site')).toBe(true)
+
+    olderAgainCtrl.abort()
+    await olderAgain.read().catch(() => {})
+    expect(hasEditorBridge(userId, 'site')).toBe(false)
+  })
+
+  it('does not cancel a superseded tab\'s in-flight call when a new tab opens', async () => {
+    const userId = `u_${Math.floor(performance.now())}_inflight`
+    const firstCtrl = new AbortController()
+    const first = createEditorBridgeStream(userId, 'site', firstCtrl.signal, { tabId: 'first' }).getReader()
+    const firstReady = await readUntil(first, (e) => e.type === 'bridgeReady')
+    const call = getEditorWorkspace(userId, 'site')!.bridge.callBrowser('slow', {})
+    const request = await readUntil(first, (e) => e.type === 'toolRequest')
+
+    const secondCtrl = new AbortController()
+    const second = createEditorBridgeStream(userId, 'site', secondCtrl.signal, { tabId: 'second' }).getReader()
+    await readUntil(second, (e) => e.type === 'bridgeReady')
+
+    expect(resolveBridgeToolResult(firstReady.bridgeId as string, request.requestId as string, { ok: true })).toBe(true)
+    expect((await call).ok).toBe(true)
+
+    firstCtrl.abort()
+    secondCtrl.abort()
+    await Promise.all([first.read().catch(() => {}), second.read().catch(() => {})])
+  })
+
+  it('waits for a workspace to connect, and gives up after the timeout', async () => {
+    const userId = `u_${Math.floor(performance.now())}_wait`
+    expect(await waitForEditorWorkspace(userId, 'site', { timeoutMs: 20 })).toBeNull()
+
+    const waiting = waitForEditorWorkspace(userId, 'site', { timeoutMs: 2_000 })
+    const ctrl = new AbortController()
+    const reader = createEditorBridgeStream(userId, 'site', ctrl.signal).getReader()
+    await readUntil(reader, (e) => e.type === 'bridgeReady')
+    expect(await waiting).not.toBeNull()
+
+    ctrl.abort()
+    await reader.read().catch(() => {})
   })
 })

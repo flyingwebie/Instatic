@@ -454,11 +454,12 @@ Scripts and user stylesheets live in `site.files[]`; runtime targeting and loadi
 |------------------------|--------------------------------------------|-----------------------------------------|-------------------------------------------------------|
 | `site_list_code_assets`     | `{ type?: 'script' \| 'style' }`           | `{ assets }`                            | List runtime code assets with file ids, paths, full-content hashes, sizes, timestamps, and runtime config |
 | `site_read_code_asset`      | `{ fileId? \| path?, part?, maxChars? }`   | `{ fileId, path, type, content, hash, runtime, pageInfo }` | Read an exact script/stylesheet content slice. The `hash` is for the full file; page through with `pageInfo.nextPart` |
-| `site_write_code_asset`     | `{ path, type, content, runtime?, dependencies? }` | asset summary + `{ action, dependencies }` | Create or replace a runtime script/stylesheet and normalize its runtime config. Existing paths are updated, new paths are created. For module scripts, `dependencies` is a package-name → version/range map added to `site.packageJson.dependencies` |
+| `site_write_code_asset`     | `{ path, type, content, runtime?, dependencies? }` | asset summary + `{ action, dependencies }` | Create or replace a runtime script/stylesheet and normalize its runtime config. Existing paths are updated, new paths are created. A **new script** must pass `runtime.scope` (`pages`, `templates`, or `all-pages`); without it the call fails and points at `site_write_page_script`, so a script never silently loads on every page. For module scripts, `dependencies` is a package-name → version/range map added to `site.packageJson.dependencies` |
+| `site_write_page_script`    | `{ pageId?, content, dependencies? }`      | asset summary + `{ pageId, action, dependencies }` | Write the page script the God Mode JS panel edits (`findPageScript`): created on first write via `createPageScript` (file + page-only scope in one undo step), replaced afterwards. `pageId` defaults to the active page; a Visual Component document has no page script. The default home for single-page behavior |
 | `site_patch_code_asset`     | `{ fileId? \| path?, expectedHash, replacements }` | asset summary + `{ replacements }` | Apply exact text replacements only when `expectedHash` matches the latest content. Ambiguous matches require a wider `oldText` or explicit `replaceAll:true` |
 | `site_inspect_code_runtime` | `{ document?: { type, id } }`              | `{ pageId, document, scripts, styles }` | Report which runtime scripts/stylesheets apply to the current page/template or supplied page/template document ref |
 
-`site_insert_html` / `site_replace_node_html` intentionally strip `<script>` elements and inline event handlers (`onclick`, `onload`, etc.). When a request needs behavior, the agent should use `site_write_code_asset({ type: "script", ... })` and then `site_inspect_code_runtime`, not raw `<script>` tags or event attributes in HTML.
+`site_insert_html` / `site_replace_node_html` intentionally strip `<script>` elements and inline event handlers (`onclick`, `onload`, etc.). When a request needs behavior, the agent writes a script, never raw `<script>` tags or event attributes in HTML. JS loads only where it is used: single-page behavior goes in `site_write_page_script`; behavior shared by several pages or a template uses `site_write_code_asset({ type: "script", runtime: { scope } })` with the narrowest scope; `{ type: "all-pages" }` is for code every page needs. `site_inspect_code_runtime` confirms the targeting.
 
 Module scripts that need npm packages should import bare package specifiers and declare those packages in the same `site_write_code_asset` call:
 
@@ -467,7 +468,7 @@ site_write_code_asset({
   path: 'src/scripts/motion.js',
   type: 'script',
   content: `import { Motion } from '@motion.page/sdk';`,
-  runtime: { format: 'module' },
+  runtime: { format: 'module', scope: { type: 'pages', pageIds: ['<page id>'] } },
   dependencies: { '@motion.page/sdk': '1.2.4' },
 })
 ```

@@ -43,11 +43,37 @@ export function encodeStreamEvent(event: AiStreamEvent): Uint8Array {
  */
 const BROWSER_TOOL_TIMEOUT_MS = 90_000
 
+/** Why a browser tool call settled without a result. */
+export type BrowserToolInterruption = 'closed' | 'aborted' | 'timeout'
+
+/**
+ * A browser tool call that never produced a result. `delivered` records
+ * whether the request had already been pushed to the browser: an undelivered
+ * call never ran and is safe to retry; a delivered one may or may not have
+ * applied its mutation.
+ */
+export class BrowserToolInterruptedError extends Error {
+  readonly reason: BrowserToolInterruption
+  readonly delivered: boolean
+
+  constructor(message: string, reason: BrowserToolInterruption, delivered: boolean) {
+    super(message)
+    this.name = 'BrowserToolInterruptedError'
+    this.reason = reason
+    this.delivered = delivered
+  }
+}
+
+const STREAM_ENDED_MESSAGE = 'AI chat stream ended before tool result arrived.'
+const STREAM_ABORTED_MESSAGE = 'AI chat stream aborted before tool result arrived.'
+
 interface PendingToolResolver {
   resolve(result: AiToolOutput): void
   reject(err: Error): void
   /** Clear the per-call timeout + abort listener. Idempotent. */
   cleanup(): void
+  /** Whether the request has been emitted to the browser. */
+  delivered(): boolean
 }
 
 interface BridgeEntry {
@@ -131,12 +157,12 @@ export function createBridge(
   const bridge: AiBrowserBridge = {
     callBrowser(toolName, input) {
       if (destroyed) {
-        return Promise.reject(new Error('AI chat stream ended before tool result arrived.'))
+        return Promise.reject(new BrowserToolInterruptedError(STREAM_ENDED_MESSAGE, 'closed', false))
       }
       const requestId = nanoid()
       return new Promise<AiToolOutput>((resolve, reject) => {
         if (signal?.aborted) {
-          reject(new Error('AI chat stream aborted before tool result arrived.'))
+          reject(new BrowserToolInterruptedError(STREAM_ABORTED_MESSAGE, 'aborted', false))
           return
         }
         let timer: ReturnType<typeof setTimeout> | null = null
@@ -151,11 +177,16 @@ export function createBridge(
           live.cleanup()
           reject(err)
         }
-        const onAbort = () => settle(new Error('AI chat stream aborted before tool result arrived.'))
+        const onAbort = () =>
+          settle(new BrowserToolInterruptedError(STREAM_ABORTED_MESSAGE, 'aborted', started))
         const start = () => {
           started = true
           timer = setTimeout(
-            () => settle(new Error(`Browser tool "${toolName}" result timed out.`)),
+            () => settle(new BrowserToolInterruptedError(
+              `Browser tool "${toolName}" result timed out.`,
+              'timeout',
+              true,
+            )),
             timeoutMs,
           )
           emit({ type: 'toolRequest', requestId, toolName, input })
@@ -171,7 +202,7 @@ export function createBridge(
         }
 
         signal?.addEventListener('abort', onAbort, { once: true })
-        entry.pending.set(requestId, { resolve, reject, cleanup })
+        entry.pending.set(requestId, { resolve, reject, cleanup, delivered: () => started })
         acquire(start)
       })
     },
@@ -191,8 +222,9 @@ export function createBridge(
       )
     }
     for (const pending of live.pending.values()) {
+      const delivered = pending.delivered()
       pending.cleanup()
-      pending.reject(new Error('AI chat stream ended before tool result arrived.'))
+      pending.reject(new BrowserToolInterruptedError(STREAM_ENDED_MESSAGE, 'closed', delivered))
     }
     live.pending.clear()
     activeBridges.delete(bridgeId)

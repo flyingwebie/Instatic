@@ -47,8 +47,9 @@ async function connectClient(
   db: DbClient,
   capabilities: Parameters<typeof buildMcpServer>[0]['capabilities'],
   userId = 'u1',
+  workspaceWaitMs = 50,
 ) {
-  const server = buildMcpServer({ db, userId, connectorId: 'c1', capabilities })
+  const server = buildMcpServer({ db, userId, connectorId: 'c1', capabilities, workspaceWaitMs })
   const [clientT, serverT] = InMemoryTransport.createLinkedPair()
   await server.connect(serverT)
   const client = new Client({ name: 'test', version: '0' })
@@ -63,6 +64,7 @@ describe('mcp server', () => {
   it('advertises styling instructions so external agents keep CSS in editable rules', async () => {
     const client = await connectClient(db, ['ai.chat', 'site.read'])
     expect(client.getInstructions()).toContain('site_write_code_asset')
+    expect(client.getInstructions()).toContain('site_write_page_script')
     await client.close()
   })
 
@@ -195,10 +197,84 @@ describe('mcp server', () => {
 
     const result = await call
     expect(result.isError).toBe(true)
-    expect(JSON.stringify(result.content)).toContain('before tool result arrived')
+    const text = JSON.stringify(result.content)
+    expect(text).toContain('Site editor tab disconnected while')
+    expect(text).toContain('may or may not have been applied')
 
     await client.close()
     await reader.read().catch(() => {})
+  })
+
+  it('waits for the workspace to connect instead of failing inside a reconnect gap', async () => {
+    const userId = 'u1-late-workspace'
+    const client = await connectClient(
+      db,
+      ['ai.chat', 'ai.tools.write', 'site.structure.edit'],
+      userId,
+      2_000,
+    )
+
+    const call = client.callTool({
+      name: 'site_insert_html',
+      arguments: { parentId: 'root', html: '<p>late</p>' },
+    })
+    // The editor reconnects only after the call has started waiting.
+    await new Promise((resolve) => setTimeout(resolve, 30))
+    const controller = new AbortController()
+    const reader = createEditorBridgeStream(userId, 'site', controller.signal).getReader()
+    const ready = await readUntil(reader, (event) => event.type === 'bridgeReady')
+    const request = await readUntil(reader, (event) => event.type === 'toolRequest')
+    resolveBridgeToolResult(ready.bridgeId as string, request.requestId as string, { ok: true, data: { inserted: 1 } })
+
+    const result = await call
+    expect(result.isError).toBeFalsy()
+    expect(JSON.stringify(result.content)).toContain('inserted')
+
+    controller.abort()
+    await client.close()
+    await reader.read().catch(() => {})
+  })
+
+  it('retries a call the closing tab never received on the tab that replaces it', async () => {
+    const userId = 'u1-undelivered-retry'
+    const firstCtrl = new AbortController()
+    const first = createEditorBridgeStream(userId, 'site', firstCtrl.signal, { tabId: 'tab-a' }).getReader()
+    await readUntil(first, (event) => event.type === 'bridgeReady')
+    const client = await connectClient(
+      db,
+      ['ai.chat', 'ai.tools.write', 'site.structure.edit'],
+      userId,
+      2_000,
+    )
+
+    // Occupy the serial bridge so the second call queues undelivered.
+    const busy = client.callTool({ name: 'site_insert_html', arguments: { parentId: 'root', html: '<p>1</p>' } })
+    await readUntil(first, (event) => event.type === 'toolRequest')
+    const queued = client.callTool({ name: 'site_delete_node', arguments: { nodeId: 'n1' } })
+    await new Promise((resolve) => setTimeout(resolve, 20))
+
+    // The same tab reconnects: its old stream closes with one delivered and one queued call.
+    const secondCtrl = new AbortController()
+    const second = createEditorBridgeStream(userId, 'site', secondCtrl.signal, { tabId: 'tab-a' }).getReader()
+    // The retry is pushed right behind bridgeReady, often in the same chunk.
+    let ready: { [k: string]: unknown } = {}
+    const retried = await readUntil(second, (event) => {
+      if (event.type === 'bridgeReady') ready = event
+      return event.type === 'toolRequest'
+    })
+    expect(retried.toolName).toBe('site_delete_node')
+    resolveBridgeToolResult(ready.bridgeId as string, retried.requestId as string, { ok: true, data: { deleted: 1 } })
+
+    const busyResult = await busy
+    expect(busyResult.isError).toBe(true)
+    expect(JSON.stringify(busyResult.content)).toContain('may or may not have been applied')
+    const queuedResult = await queued
+    expect(queuedResult.isError).toBeFalsy()
+
+    firstCtrl.abort()
+    secondCtrl.abort()
+    await client.close()
+    await Promise.all([first.read().catch(() => {}), second.read().catch(() => {})])
   })
 
   it('enforces an own-only connector grant before relaying through a full-power owner browser', async () => {

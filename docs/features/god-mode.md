@@ -372,6 +372,11 @@ with no new publish path.
   changes (undo, the Code editor panel, a co-editor) re-sync the buffer via
   the same `useDocumentSync` hook the CSS panel uses (`code-dock/
   useDocumentSync.ts`).
+- **Agents** — the in-app agent and MCP clients write the same file through
+  `site_write_page_script` (`runWritePageScript` in
+  `src/admin/pages/site/agent/codeAssetTools.ts`): `findPageScript` to locate
+  it, `createPageScript` on first write. An agent's page behavior therefore
+  shows up in this panel and loads only on its page.
 
 ## Autocomplete
 

@@ -30,6 +30,8 @@ const EditorBridgeScopeSchema = Type.Union([
   Type.Literal('site'),
   Type.Literal('content'),
 ])
+// Opaque per-tab id the client generates once and reuses across reconnects.
+const TabIdSchema = Type.String({ pattern: '^[A-Za-z0-9_-]{1,64}$' })
 
 // Mirrors the Content workspace entry gate in `src/admin/access.ts` and
 // `requireDataAccess` in the server's data access layer.
@@ -59,10 +61,8 @@ async function handle(req: Request, db: DbClient): Promise<Response> {
   const userOrResponse = await requireAuthenticatedUser(req, db)
   if (userOrResponse instanceof Response) return userOrResponse
 
-  const scopeResult = safeParseValue(
-    EditorBridgeScopeSchema,
-    new URL(req.url).searchParams.get('scope'),
-  )
+  const searchParams = new URL(req.url).searchParams
+  const scopeResult = safeParseValue(EditorBridgeScopeSchema, searchParams.get('scope'))
   if (!scopeResult.ok) {
     return jsonResponse(
       { error: 'Query parameter `scope` is required (one of: site, content)' },
@@ -70,6 +70,11 @@ async function handle(req: Request, db: DbClient): Promise<Response> {
     )
   }
   const scope: EditorBridgeScope = scopeResult.value
+  const rawTabId = searchParams.get('tabId')
+  const tabIdResult = rawTabId === null ? null : safeParseValue(TabIdSchema, rawTabId)
+  if (tabIdResult && !tabIdResult.ok) {
+    return jsonResponse({ error: 'Query parameter `tabId` is invalid' }, { status: 400 })
+  }
 
   // Hosting a bridge requires access to the workspace whose live state the
   // browser tool will read or mutate.
@@ -85,7 +90,10 @@ async function handle(req: Request, db: DbClient): Promise<Response> {
   const branch = await resolveBranchScope(req, db)
   if (branch instanceof Response) return branch
 
-  const stream = createEditorBridgeStream(userOrResponse.id, scope, req.signal, { branchId: branch.branchId })
+  const stream = createEditorBridgeStream(userOrResponse.id, scope, req.signal, {
+    branchId: branch.branchId,
+    tabId: tabIdResult?.value,
+  })
   return new Response(stream, {
     status: 200,
     headers: {

@@ -5,6 +5,7 @@
  * through the site executor (or vice versa).
  */
 import { useEffect } from 'react'
+import { nanoid } from 'nanoid'
 import { Type } from '@core/utils/typeboxHelpers'
 import type { AiToolOutput } from '@core/ai'
 import { getErrorMessage } from '@core/utils/errorMessage'
@@ -77,13 +78,15 @@ export async function runMcpWorkspaceBridgeConnection(
   dispatchTool: McpToolDispatcher,
   afterSuccessfulTool: McpAfterSuccessfulTool | undefined,
   lifecycleSignal: AbortSignal,
+  tabId: string,
 ): Promise<McpBridgeConnectionOutcome> {
   const connectionController = new AbortController()
   const signal = AbortSignal.any([lifecycleSignal, connectionController.signal])
   let bridgeId = ''
 
   try {
-    const res = await fetch(`${MCP_BRIDGE_PATH}?scope=${scope}`, withAmbientHeaders({
+    const query = new URLSearchParams({ scope, tabId })
+    const res = await fetch(`${MCP_BRIDGE_PATH}?${query}`, withAmbientHeaders({
       method: 'GET',
       credentials: 'same-origin',
       // The bridge body stays newline-delimited JSON, but the event-stream
@@ -132,6 +135,10 @@ export function useMcpWorkspaceBridge(
     if (!enabled) return undefined
 
     const lifecycleController = new AbortController()
+    // Stable across this mount's reconnects: the server keeps a tab's place
+    // in line by this id, so an idle-recycle reconnect never steals the
+    // workspace from a tab opened later.
+    const tabId = nanoid()
     let stopped = false
     let reconnectTimer: ReturnType<typeof setTimeout> | null = null
 
@@ -144,6 +151,7 @@ export function useMcpWorkspaceBridge(
         dispatchTool,
         afterSuccessfulTool,
         lifecycleController.signal,
+        tabId,
       )
     }
 

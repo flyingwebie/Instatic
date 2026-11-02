@@ -15,6 +15,7 @@ import { useEditorStore } from '@site/store/store'
 import { executeAgentTool } from '@site/agent'
 import type { AiToolOutput } from '@core/ai'
 import { classNamesForClassIds } from '@core/page-tree'
+import { findPageScript } from '@core/site-runtime'
 import '@modules/base'
 
 // ---------------------------------------------------------------------------
@@ -373,6 +374,45 @@ describe('executeAgentTool — style-only payloads', () => {
 // ---------------------------------------------------------------------------
 
 describe('executeAgentTool — code assets', () => {
+  it('write_code_asset refuses a new script without an explicit scope', async () => {
+    freshStore()
+    const result = await executeAgentTool('site_write_code_asset', {
+      path: 'src/scripts/slider.js',
+      type: 'script',
+      content: 'console.info("slider")',
+    })
+    expect(result.ok).toBe(false)
+    expect(result.error).toContain('site_write_page_script')
+    expect(useEditorStore.getState().site!.files.some((file) => file.path === 'src/scripts/slider.js')).toBe(false)
+  })
+
+  it('write_page_script creates the page-only script the JS panel edits, then replaces it', async () => {
+    freshStore()
+    const pageId = useEditorStore.getState().activePageId!
+    const created = expectToolData<{ fileId: string; action: string; pageId: string }>(
+      await executeAgentTool('site_write_page_script', { content: 'const a = 1' }),
+    )
+    expect(created.action).toBe('created')
+    expect(created.pageId).toBe(pageId)
+    const state = useEditorStore.getState()
+    expect(findPageScript(state.site!.files, state.siteRuntime, pageId)?.id).toBe(created.fileId)
+    expect(state.siteRuntime.scripts[created.fileId]?.scope).toEqual({ type: 'pages', pageIds: [pageId] })
+
+    const updated = expectToolData<{ fileId: string; action: string }>(
+      await executeAgentTool('site_write_page_script', { pageId, content: 'const a = 2' }),
+    )
+    expect(updated).toMatchObject({ fileId: created.fileId, action: 'updated' })
+    const file = useEditorStore.getState().site!.files.find((item) => item.id === created.fileId)!
+    expect(file.content).toBe('const a = 2')
+  })
+
+  it('write_page_script rejects an unknown page', async () => {
+    freshStore()
+    const result = await executeAgentTool('site_write_page_script', { pageId: 'missing', content: '' })
+    expect(result.ok).toBe(false)
+    expect(result.error).toContain('Page not found')
+  })
+
   it('write_code_asset creates a runtime script with config and list/read expose it', async () => {
     freshStore()
     const result = await executeAgentTool('site_write_code_asset', {
@@ -439,7 +479,7 @@ describe('executeAgentTool — code assets', () => {
       path: 'src/scripts/motion.js',
       type: 'script',
       content: `import { Motion } from '@motion.page/sdk';\nwindow.Motion = Motion;`,
-      runtime: { format: 'module' },
+      runtime: { format: 'module', scope: { type: 'all-pages' } },
       dependencies: { '@motion.page/sdk': '1.2.4' },
     })
 
@@ -501,6 +541,7 @@ describe('executeAgentTool — code assets', () => {
       path: 'src/scripts/long.js',
       type: 'script',
       content,
+      runtime: { scope: { type: 'all-pages' } },
     })
     const hash = expectHash(write)
 
@@ -535,6 +576,7 @@ describe('executeAgentTool — code assets', () => {
       path: 'src/scripts/theme-toggle.js',
       type: 'script',
       content: 'const initial = "light";\nconst next = "dark";\n',
+      runtime: { scope: { type: 'all-pages' } },
     })
     const oldHash = expectHash(write)
 
@@ -570,6 +612,7 @@ describe('executeAgentTool — code assets', () => {
       path: 'src/scripts/repeated.js',
       type: 'script',
       content: 'theme = "light";\ntheme = "light";\n',
+      runtime: { scope: { type: 'all-pages' } },
     })
     const oldHash = expectHash(write)
 

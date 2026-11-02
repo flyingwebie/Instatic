@@ -243,21 +243,33 @@ export const ReadCodeAssetInputSchema = Type.Composite([
 ])
 export type ReadCodeAssetInput = Static<typeof ReadCodeAssetInputSchema>
 
+const RuntimeDependenciesInputSchema = Type.Record(
+  Type.String(),
+  Type.String({ minLength: 1 }),
+  {
+    description:
+      'Runtime npm dependencies required by a module script. Keys are package names, values are semver versions/ranges. Only valid for scripts.',
+  },
+)
+
 export const WriteCodeAssetInputSchema = Type.Object({
   path: Type.String({ minLength: 1 }),
   type: CodeAssetTypeSchema,
   content: Type.String(),
   runtime: Type.Optional(Type.Record(Type.String(), Type.Unknown())),
-  dependencies: Type.Optional(Type.Record(
-    Type.String(),
-    Type.String({ minLength: 1 }),
-    {
-      description:
-        'Runtime npm dependencies required by a module script. Keys are package names, values are semver versions/ranges. Only valid when type is "script".',
-    },
-  )),
+  dependencies: Type.Optional(RuntimeDependenciesInputSchema),
 })
 export type WriteCodeAssetInput = Static<typeof WriteCodeAssetInputSchema>
+
+export const WritePageScriptInputSchema = Type.Object({
+  pageId: Type.Optional(Type.String({
+    minLength: 1,
+    description: 'Page or template whose script to write. Defaults to the page open in the editor.',
+  })),
+  content: Type.String({ description: 'The full script source. Replaces the existing page script.' }),
+  dependencies: Type.Optional(RuntimeDependenciesInputSchema),
+})
+export type WritePageScriptInput = Static<typeof WritePageScriptInputSchema>
 
 export const PatchCodeAssetInputSchema = Type.Composite([
   CodeAssetRefInputSchema,

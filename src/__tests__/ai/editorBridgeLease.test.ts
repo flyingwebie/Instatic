@@ -8,7 +8,7 @@
 import { describe, expect, it } from 'bun:test'
 import {
   createEditorBridgeStream,
-  getEditorBridgeForUser,
+  getEditorWorkspace,
   hasEditorBridge,
 } from '../../../server/ai/mcp/editorBridge'
 import { resolveBridgeToolResult } from '../../../server/ai/runtime/transport'
@@ -74,7 +74,7 @@ describe('editor bridge idle lease', () => {
     // Tool traffic every ~40ms for well past the 80ms lease: the stream must
     // survive because every relayed request re-arms the idle lease.
     for (let i = 0; i < 6; i++) {
-      const bridge = getEditorBridgeForUser(userId, 'site')
+      const bridge = getEditorWorkspace(userId, 'site')?.bridge ?? null
       expect(bridge).not.toBeNull()
       await bridge?.callBrowser('noop_tool', {})
       await sleep(40)
@@ -114,7 +114,7 @@ describe('editor bridge batch delivery', () => {
 
     // Four calls pushed together take ~200ms to execute serially — well past
     // the 80ms lease. Every one must still succeed.
-    const bridge = getEditorBridgeForUser(userId, 'site')
+    const bridge = getEditorWorkspace(userId, 'site')?.bridge ?? null
     const results = await Promise.all(
       ['a', 'b', 'c', 'd'].map((name) => bridge!.callBrowser(name, {})),
     )
@@ -133,7 +133,7 @@ describe('editor bridge batch delivery', () => {
 
     // Nothing answers: the call stays pending far past the lease. Closing the
     // stream now would reject it while the editor may still be working on it.
-    const pending = getEditorBridgeForUser(userId, 'site')!.callBrowser('slow_tool', {})
+    const pending = getEditorWorkspace(userId, 'site')!.bridge.callBrowser('slow_tool', {})
     pending.catch(() => {})
     await sleep(150)
     expect(hasEditorBridge(userId, 'site')).toBe(true)
