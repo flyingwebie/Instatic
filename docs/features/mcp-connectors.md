@@ -108,7 +108,9 @@ claude mcp add instatic --transport http http://localhost:3000/_instatic/mcp \
   --header "Authorization: Bearer imcp_pat_…"
 ```
 
-Claude Desktop can also reach a local server through a local stdio bridge. The UI generates a ready-to-copy `mcp-remote` configuration that keeps the token in an environment variable instead of embedding it in the command arguments.
+Claude Desktop can also reach a local server through a local stdio bridge. The UI generates a ready-to-copy `mcp-remote` configuration that keeps the token in an environment variable instead of embedding it in the command arguments. The first-party alternative is `instatic mcp` from the [`instatic` CLI](cli.md), a stdio proxy that adds the CLI's safe retries and reconnects.
+
+Agents that work through a shell rather than MCP can use the same token with the [`instatic` CLI](cli.md) (`instatic call <tool> '<json>'`).
 
 Personal tokens are deliberately not the hosted-connector setup path. The hosted Claude connector form does not provide a general custom-header field, and a cloud-hosted connector cannot reach a local-only endpoint.
 
