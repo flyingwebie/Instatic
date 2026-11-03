@@ -60,6 +60,7 @@ function deferredProvider(): CollabProvider & { releaseAll: () => void } {
     status: () => 'connected',
     canSend: () => true,
     reconnectNow: () => {},
+    flush: async () => true,
     onStatus: () => () => {},
     onReset: (listener) => {
       resetListeners.add(listener)

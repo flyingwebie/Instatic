@@ -74,6 +74,7 @@ import {
   type LocalPatchOutcome,
 } from './collabNotices'
 import { anyGateUnsynced, clearProviderGates, hasProviderGate, registerProviderGate, setGatesActive } from './collabWriteGate'
+import { recordCollabWriteIncident, startCollabWriteWatch, type CollabWriteReceipt } from './collabWriteWatch'
 
 interface ManagedDoc {
   doc: Y.Doc
@@ -225,7 +226,18 @@ const managedDocSet: CollabDocSet = {
  * `cancelInlineEdit` — that calls undo(), which is itself blocked right now.
  */
 export function notifyCollabBlocked(reason: BlockedReason): void {
+  recordCollabWriteIncident({ kind: 'blocked', reason })
   if (collabBlockToast(reason)) storeApi?.getState().endInlineEdit()
+}
+
+/**
+ * Watch the writes a programmatic caller is about to make. Call the returned
+ * function after the mutation: it resolves `{ ok: true }` only when nothing
+ * was refused or reverted AND the server confirmed receiving every frame sent
+ * (see `CollabProvider.flush`). Detached mode has no server, so it is always ok.
+ */
+export function beginCollabWriteWatch(): () => Promise<CollabWriteReceipt> {
+  return startCollabWriteWatch(async () => (provider ? provider.flush() : true))
 }
 
 export function applyLocalSitePatches(
@@ -610,6 +622,7 @@ export function connectCollabProvider(next: CollabProvider): void {
   })
   detachProviderReset?.()
   detachProviderReset = next.onReset((docId, reason) => {
+    recordCollabWriteIncident({ kind: 'reset', reason })
     if (reason === 'gone') {
       // The branch is gone: leave it (rebinding would only be refused again).
       next.unbind(docId)

@@ -658,6 +658,30 @@ they commit: the `ColorInput` primitive throttles picker-drag change events
 so a color drag cannot fill the socket backlog past the provider's send
 gate.
 
+**Liveness and delivery receipts.** The provider pings every 10 s and goes
+offline only when a ping stays unanswered for 25 s. A ping-timer tick that
+runs late (the tab's main thread was busy rendering a big change, or the tab
+is throttled) waits one more second before ruling, because the pong may be
+queued right behind the timer; this stops a large AI page replace from
+flipping a healthy editor to "Offline — reconnecting". The relay answers a
+connection's frames strictly in order, so a pong for a ping sent after an edit
+is a delivery receipt: `provider.flush()` resolves `true` once every frame sent
+so far has been processed (it re-pings when updates held for an unknown
+lineage were released mid-wait), and `false` on close or deadline.
+
+**AI tool writes report what reached the server.** A refused write leaves the
+store unchanged, so a tool that only described the store afterwards used to
+report the old state as a success (`site_write_code_asset` answered "updated"
+with the previous hash). `executeAgentTool` now runs every site mutation tool
+through `runDeliveredSiteWrite` (`agent/deliveredSiteWrite.ts`), which waits
+for the write gate, then checks `beginCollabWriteWatch()` (`collabBinding.ts`
++ `collabWriteWatch.ts`):
+after the tool runs, any transport refusal (offline / connecting / syncing),
+any server reset that discarded changes (`stale`, `refused`, `oversize`,
+`gone`; never the routine `rewritten`), or a missing delivery receipt turns
+the result into an error that says what to do next. MCP clients and the
+in-editor agent see the same outcome.
+
 The socket is same-origin in production and under `vite dev` alike: the
 Vite proxy forwards the upgrade to the CMS (`ws: true` on the `/admin/api`
 entry in `vite.config.ts`), so the provider simply dials

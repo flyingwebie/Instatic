@@ -96,6 +96,16 @@ export interface CollabProvider {
   canSend(): boolean
   /** Escape the backoff (which reaches 30s) when the user says the network is back. */
   reconnectNow(): void
+  /**
+   * Resolve `true` once the server has processed every frame sent so far.
+   *
+   * `send()` only enqueues, so an accepted local edit is not yet a delivered
+   * one. The server handles each connection's frames strictly in order and
+   * answers a ping only after everything before it, so a pong for a ping sent
+   * after the last edit is a delivery receipt. Resolves `false` if the socket
+   * closes or the deadline passes first: the edit may not have landed.
+   */
+  flush(timeoutMs?: number): Promise<boolean>
   onStatus(listener: (status: CollabStatus) => void): () => void
   onReset(listener: CollabResetListener): () => void
   destroy(): void
@@ -155,6 +165,14 @@ export function createCollabProvider(
   let reconnectTimer: ReturnType<typeof setTimeout> | undefined
   let pingTimer: ReturnType<typeof setInterval> | undefined
   let lastInboundAt = 0
+  /**
+   * One slot per ping in flight, in send order. Pongs come back in the same
+   * order, so each pong settles the oldest slot. Heartbeat pings hold `null`;
+   * `flush` pings hold the resolver waiting for that receipt.
+   */
+  let pingSlots: Array<((delivered: boolean) => void) | null> = []
+  /** Bumped on every non-ping frame actually handed to the socket. */
+  let outboundSeq = 0
   const frameReader = createCollabFrameReader()
 
   const presenceDoc = new Y.Doc()
@@ -189,11 +207,63 @@ export function createCollabProvider(
   }
 
   function sendFrame(docId: string, frameType: number, payload: Uint8Array): void {
-    // Pings must go out even while the connection is still being judged;
-    // everything else respects the gate.
     if (!socket || socket.readyState !== 1 /* OPEN */) return
-    if (frameType !== FRAME_PING && !canSend()) return
+    if (!canSend()) return
+    outboundSeq += 1
     socket.send(encodeCollabFrame(docId, bound.get(docId)?.generation ?? '', frameType, payload))
+  }
+
+  /**
+   * Pings must go out even while the connection is still being judged, so
+   * they skip the write gate. Returns false when there is no open socket.
+   */
+  function sendPing(slot: ((delivered: boolean) => void) | null): boolean {
+    if (!socket || socket.readyState !== 1 /* OPEN */) return false
+    pingSlots.push(slot)
+    socket.send(encodeCollabFrame(PRESENCE_DOC_ID, '', FRAME_PING, new Uint8Array()))
+    return true
+  }
+
+  /** The socket is gone: no pending receipt can arrive any more. */
+  function failPingSlots(): void {
+    const slots = pingSlots
+    pingSlots = []
+    for (const slot of slots) slot?.(false)
+  }
+
+  function roundTrip(timeoutMs: number): Promise<boolean> {
+    return new Promise((resolve) => {
+      let settled = false
+      const settle = (delivered: boolean): void => {
+        if (settled) return
+        settled = true
+        clearTimeout(timer)
+        resolve(delivered)
+      }
+      const timer = setTimeout(() => settle(false), timeoutMs)
+      if (!sendPing(settle)) settle(false)
+    })
+  }
+
+  function hasHeldUpdates(): boolean {
+    for (const entry of bound.values()) {
+      if (entry.pending.length > 0) return true
+    }
+    return false
+  }
+
+  async function flush(timeoutMs = 15_000): Promise<boolean> {
+    const deadline = Date.now() + timeoutMs
+    // Updates held back until a doc learns its lineage go out when the
+    // server's first frame for that doc arrives, which can be AFTER this
+    // ping. Repeat until a round trip covers everything that was sent.
+    for (;;) {
+      const remaining = deadline - Date.now()
+      if (remaining <= 0 || status !== 'connected') return false
+      const seqBefore = outboundSeq
+      if (!(await roundTrip(remaining))) return false
+      if (outboundSeq === seqBefore && !hasHeldUpdates()) return true
+    }
   }
 
   function sendSyncStep1(docId: string, doc: Y.Doc): void {
@@ -251,9 +321,12 @@ export function createCollabProvider(
   function handleFrame(data: Uint8Array): void {
     const frame = decodeCollabFrame(data)
 
-    // The inbound timestamp is already taken in onmessage — a pong carries no
-    // other meaning.
-    if (frame.frameType === FRAME_PONG) return
+    // The inbound timestamp is already taken in onmessage. A pong also
+    // settles the oldest ping in flight (a flush receipt, when one waits).
+    if (frame.frameType === FRAME_PONG) {
+      pingSlots.shift()?.(true)
+      return
+    }
 
     if (frame.docId === PRESENCE_DOC_ID && frame.frameType === FRAME_AWARENESS) {
       awarenessProtocol.applyAwarenessUpdate(awareness, frame.payload, REMOTE_ORIGIN)
@@ -308,6 +381,16 @@ export function createCollabProvider(
       // Timestamp of the first UNANSWERED ping of the current cycle; a cycle
       // ends when any inbound frame arrives after it.
       let lastPingSentAt = 0
+      let lastTickAt = Date.now()
+      const openedSocket = socket
+      // Publish OFFLINE synchronously: `onclose` is not prompt on a black
+      // hole, and the write gate must not keep accepting edits while the
+      // toolbar still reads "Draft synced".
+      const declareBlackHole = (): void => {
+        if (socket !== openedSocket || lastInboundAt >= lastPingSentAt) return
+        setStatus('offline')
+        socket?.close()
+      }
       clearInterval(pingTimer)
       pingTimer = setInterval(() => {
         const now = Date.now()
@@ -319,16 +402,19 @@ export function createCollabProvider(
         // resumed, toasting "Still connecting" at whatever the user did
         // next.
         const answered = lastInboundAt >= lastPingSentAt
+        // A late tick means this tab's main thread was busy (a large page
+        // render, a big paste) or throttled, and the pong may be queued right
+        // behind this timer. Give queued messages a moment to run before
+        // ruling, instead of declaring a healthy socket offline.
+        const late = now - lastTickAt > pingIntervalMs * 1.5
+        lastTickAt = now
         if (!answered && now - lastPingSentAt > livenessTimeoutMs) {
-          // Publish OFFLINE synchronously: `onclose` is not prompt on a black
-          // hole, and the write gate must not keep accepting edits while the
-          // toolbar still reads "Draft synced".
-          setStatus('offline')
-          socket?.close()
+          if (late) setTimeout(declareBlackHole, 1_000)
+          else declareBlackHole()
           return
         }
         if (answered) lastPingSentAt = now
-        sendFrame(PRESENCE_DOC_ID, FRAME_PING, new Uint8Array())
+        sendPing(null)
       }, pingIntervalMs)
       for (const [docId, entry] of bound) sendSyncStep1(docId, entry.doc)
       // Re-announce local presence after a reconnect.
@@ -363,6 +449,7 @@ export function createCollabProvider(
 
     socket.onclose = () => {
       frameReader.clear()
+      failPingSlots()
       socket = null
       clearInterval(pingTimer)
       pingTimer = undefined
@@ -418,6 +505,7 @@ export function createCollabProvider(
     awareness,
     status: () => status,
     canSend,
+    flush,
     reconnectNow: () => {
       if (destroyed || status === 'connected' || socket) return
       clearTimeout(reconnectTimer)
@@ -434,6 +522,7 @@ export function createCollabProvider(
     },
     destroy: () => {
       frameReader.clear()
+      failPingSlots()
       destroyed = true
       clearTimeout(reconnectTimer)
       clearInterval(pingTimer)

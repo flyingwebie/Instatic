@@ -230,6 +230,74 @@ describe('collab provider', () => {
     provider.destroy()
   })
 
+  describe('flush (delivery receipt)', () => {
+    function pings(socket: FakeSocket): number {
+      return socket.sent.filter((f) => decodeCollabFrame(f).frameType === FRAME_PING).length
+    }
+    const pong = (): Uint8Array => encodeCollabFrame(PRESENCE_DOC_ID, '', FRAME_PONG, new Uint8Array())
+
+    it('resolves true only once the server answers a ping sent after the last edit', async () => {
+      const socket = new FakeSocket()
+      const provider = createCollabProvider({ createSocket: () => socket, pingIntervalMs: 60_000 })
+      socket.open()
+      const { doc } = provider.bind('page:p1')
+      socket.emit(encodeCollabFrame('page:p1', 'gen-1', FRAME_SYNC, emptyStep2()))
+      doc.transact(() => doc.getMap('tree').set('rootNodeId', 'root'), LOCAL_ORIGIN)
+
+      let settled: boolean | null = null
+      const receipt = provider.flush(1_000).then((delivered) => { settled = delivered })
+      expect(pings(socket)).toBe(1)
+      await Bun.sleep(5)
+      expect(settled).toBeNull() // no answer yet: not delivered yet
+
+      socket.emit(pong())
+      await receipt
+      expect(settled).toBe(true)
+      provider.destroy()
+    })
+
+    it('resolves false when the socket closes before the receipt arrives', async () => {
+      const socket = new FakeSocket()
+      const provider = createCollabProvider({ createSocket: () => socket, pingIntervalMs: 60_000 })
+      socket.open()
+      const receipt = provider.flush(1_000)
+      socket.readyState = 3
+      socket.onclose?.()
+      expect(await receipt).toBe(false)
+      provider.destroy()
+    })
+
+    it('resolves false on the deadline when the server never answers', async () => {
+      const socket = new FakeSocket()
+      const provider = createCollabProvider({ createSocket: () => socket, pingIntervalMs: 60_000 })
+      socket.open()
+      expect(await provider.flush(20)).toBe(false)
+      provider.destroy()
+    })
+
+    it('covers updates held for an unknown lineage with a second round trip', async () => {
+      const socket = new FakeSocket()
+      const provider = createCollabProvider({ createSocket: () => socket, pingIntervalMs: 60_000 })
+      socket.open()
+      const { doc } = provider.bind('page:p1')
+      // Edit before the server named the lineage: the update is held, not sent.
+      doc.transact(() => doc.getMap('tree').set('rootNodeId', 'root'), LOCAL_ORIGIN)
+
+      const receipt = provider.flush(1_000)
+      expect(pings(socket)).toBe(1)
+      // The server's step2 names the lineage (releasing the held update),
+      // then answers the first ping. That pong does NOT cover the release.
+      socket.emit(encodeCollabFrame('page:p1', 'gen-1', FRAME_SYNC, emptyStep2()))
+      socket.emit(pong())
+      await Bun.sleep(5)
+      expect(pings(socket)).toBe(2)
+
+      socket.emit(pong())
+      expect(await receipt).toBe(true)
+      provider.destroy()
+    })
+  })
+
   it('refuses to send while the socket backlog is not draining', () => {
     const socket = new FakeSocket()
     const provider = createCollabProvider({ createSocket: () => socket, pingIntervalMs: 60_000 })

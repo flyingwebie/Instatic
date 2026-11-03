@@ -74,7 +74,7 @@ import { importHtml } from '@core/htmlImport'
 import type { BaseNode, PageTemplateConfig } from '@core/page-tree'
 import { renderNode, type RenderConfig, type RenderAccumulators } from '@core/publisher'
 import { getAgentStoreApi } from './storeRef'
-import { whenCollabWritable } from '@site/store/slices/site/collabWriteGate'
+import { runDeliveredSiteWrite } from './deliveredSiteWrite'
 import { AUTO_NAVIGATE_TOOLS, SITE_MUTATION_TOOLS } from './toolClassification'
 import {
   runSetColorTokens,
@@ -589,17 +589,15 @@ export async function executeAgentTool(
   toolName: string,
   rawInput: unknown,
 ): Promise<AiToolOutput> {
-  try {
-    // A write refused by the collab sync gate never reaches the relay, so wait
-    // for the gate to open rather than reporting a success the server will
-    // never see. Sub-second in practice; the deadline exists so a genuinely
-    // stuck socket surfaces as an error instead of hanging the tool call.
-    if (SITE_MUTATION_TOOLS.has(toolName) && !(await whenCollabWritable())) {
-      return aiToolError(
-        'Editor is still syncing with the collaboration relay; the write was not applied. Retry shortly.',
-      )
-    }
+  if (!SITE_MUTATION_TOOLS.has(toolName)) return dispatchSiteTool(toolName, rawInput)
+  return runDeliveredSiteWrite(() => dispatchSiteTool(toolName, rawInput))
+}
 
+async function dispatchSiteTool(
+  toolName: string,
+  rawInput: unknown,
+): Promise<AiToolOutput> {
+  try {
     // Auto-navigate: if a node-targeting tool references a node that lives in a
     // different document, switch the canvas to that document BEFORE running, so
     // the mutation lands in the right tree and stays visible to the user.
