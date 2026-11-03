@@ -39,7 +39,8 @@ src/admin/pages/media/
 │   ├── MediaPickerField/               — embedded picker control
 │   ├── MediaFolderPanel/               — folder list panel
 │   ├── MediaStoragePanel/              — storage adapter management
-│   └── viewers/                        — per-media-type viewers (image, video, pdf, etc.)
+│   └── viewers/                        — per-media-type viewers (image, video, audio, PDF, download fallback)
+├── pdf/pdfDocument.ts                  — pdf.js loader, page rendering, cached first-page thumbnails
 ├── hooks/
 │   ├── useMediaWorkspace.ts            — orchestrates server state (folders, assets, filters)
 │   ├── useMediaDnd.ts                  — shared DnD wiring (dragOver / dragLeave / drop handlers + drop-target highlight)
@@ -60,6 +61,24 @@ src/admin/shared/FloatingWindow/        — shared portal shell + persisted drag
 ```
 
 ---
+
+## PDF previews
+
+PDFs stay `inline: false` in the media-type catalogue, so `/uploads/*` still
+serves them as downloads and a PDF can never run on the admin origin. The
+library previews them by fetching the bytes (`apiBlobRequest`) and drawing
+pages with pdf.js (`pdfjs-dist`), which parses in a Web Worker, runs no
+document JavaScript, and has XFA disabled.
+
+- **Viewer** (`viewers/PdfViewer.tsx`): every page stacked in a scroll area,
+  painted lazily as it nears the viewport, with a page count and a Download
+  button. A file pdf.js cannot parse falls back to `FallbackViewer`.
+- **Grid tile** (`MediaCanvas/PdfThumbnail.tsx`): the first page, rendered
+  when the tile scrolls near view, at most two PDFs parsed at once, cached per
+  content version (`pdfContentKey`: path + size + `replacedAt`, so "Replace"
+  refreshes it). Other documents show a file icon, not a folder icon.
+- pdf.js and its worker load on first use only; they are not in the admin's
+  initial bundle.
 
 ## Page architecture
 
