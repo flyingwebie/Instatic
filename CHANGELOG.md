@@ -8,6 +8,14 @@ This project is pre-1.0. Breaking changes may appear in minor or patch releases 
 
 ## 0.0.24 - 2026-10-30
 
+### Admin, media, and CLI
+
+- The running Instatic version shows on the dashboard, in the Status widget, and under Settings → General → About.
+- Settings → Uploads chooses which file types can be uploaded, with document and audio support.
+- New `instatic` CLI (`@flyingwebie/instatic`) for terminals and AI agents: browser sign-in, batch calls, and exit codes that tell when no editor is open.
+- MCP agents stay connected to the open editor, their scripts are scoped, the OAuth issuer is named, and uploads honor the upload type policy.
+- Every merge to `main` that adds a feature or fix now cuts a release automatically.
+
 ### Publishing and AI
 
 - Published CSS and JavaScript are now minified. Canvas preview builds stay readable.

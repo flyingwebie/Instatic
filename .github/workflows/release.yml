@@ -4,6 +4,17 @@ on:
   push:
     tags:
       - 'v*.*.*'
+  # Called by auto-release.yml after it tags a merge to main. A tag pushed with
+  # GITHUB_TOKEN does not trigger the push event above, so this is the only path.
+  workflow_call:
+    inputs:
+      tag:
+        description: Release tag, e.g. v0.0.25
+        required: true
+        type: string
+
+env:
+  RELEASE_TAG: ${{ inputs.tag || github.ref_name }}
 
 permissions:
   contents: write
@@ -29,6 +40,8 @@ jobs:
     steps:
       - name: Checkout
         uses: actions/checkout@v4
+        with:
+          ref: ${{ env.RELEASE_TAG }}
 
       - name: Set up Bun
         uses: oven-sh/setup-bun@v2
@@ -55,12 +68,14 @@ jobs:
     steps:
       - name: Checkout
         uses: actions/checkout@v4
+        with:
+          ref: ${{ env.RELEASE_TAG }}
 
       - name: Resolve release version
         id: version
         shell: bash
         run: |
-          VERSION="${GITHUB_REF_NAME#v}"
+          VERSION="${RELEASE_TAG#v}"
           echo "version=${VERSION}" >> "$GITHUB_OUTPUT"
           echo "created=$(date -u +%Y-%m-%dT%H:%M:%SZ)" >> "$GITHUB_OUTPUT"
           # GHCR namespaces are lowercase. Publish under the repository owner
@@ -83,8 +98,8 @@ jobs:
         with:
           images: ghcr.io/${{ steps.version.outputs.owner }}/instatic
           tags: |
-            type=semver,pattern={{version}}
-            type=semver,pattern={{major}}.{{minor}}
+            type=semver,pattern={{version}},value=${{ env.RELEASE_TAG }}
+            type=semver,pattern={{major}}.{{minor}},value=${{ env.RELEASE_TAG }}
             type=raw,value=latest
 
       - name: Build and push image
@@ -111,6 +126,8 @@ jobs:
     steps:
       - name: Checkout
         uses: actions/checkout@v4
+        with:
+          ref: ${{ env.RELEASE_TAG }}
 
       - name: Set up Bun
         uses: oven-sh/setup-bun@v2
@@ -129,10 +146,10 @@ jobs:
           GH_TOKEN: ${{ github.token }}
         shell: bash
         run: |
-          if gh release view "$GITHUB_REF_NAME" >/dev/null 2>&1; then
+          if gh release view "$RELEASE_TAG" >/dev/null 2>&1; then
             exit 0
           fi
-          gh release create "$GITHUB_REF_NAME" \
+          gh release create "$RELEASE_TAG" \
             --title "Instatic ${{ needs.image.outputs.version }}" \
             --generate-notes
 
@@ -140,7 +157,7 @@ jobs:
         env:
           GH_TOKEN: ${{ github.token }}
         run: |
-          gh release upload "$GITHUB_REF_NAME" \
+          gh release upload "$RELEASE_TAG" \
             .tmp/server-artifacts/instatic-server-*.tar.gz \
             .tmp/server-artifacts/instatic-server-*-checksums.txt \
             --clobber
@@ -154,6 +171,8 @@ jobs:
     steps:
       - name: Checkout
         uses: actions/checkout@v4
+        with:
+          ref: ${{ env.RELEASE_TAG }}
 
       - name: Set up Bun
         uses: oven-sh/setup-bun@v2
@@ -169,10 +188,10 @@ jobs:
           GH_TOKEN: ${{ github.token }}
         shell: bash
         run: |
-          if gh release view "$GITHUB_REF_NAME" >/dev/null 2>&1; then
+          if gh release view "$RELEASE_TAG" >/dev/null 2>&1; then
             exit 0
           fi
-          gh release create "$GITHUB_REF_NAME" \
+          gh release create "$RELEASE_TAG" \
             --title "Instatic ${{ needs.image.outputs.version }}" \
             --generate-notes
 
@@ -180,6 +199,6 @@ jobs:
         env:
           GH_TOKEN: ${{ github.token }}
         run: |
-          gh release upload "$GITHUB_REF_NAME" \
+          gh release upload "$RELEASE_TAG" \
             ".tmp/release/instatic-${{ needs.image.outputs.version }}-release-bundle.tar.gz" \
             --clobber
