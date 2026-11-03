@@ -53,6 +53,7 @@ function fakeProvider(): CollabProvider & {
     status: () => 'connected',
     canSend: () => true,
     reconnectNow: () => {},
+    flush: async () => true,
     onStatus: () => () => {},
     onReset: (listener) => {
       resetListeners.add(listener)

@@ -4,12 +4,14 @@
  *   image/*  → ImageViewer
  *   video/*  → VideoViewer
  *   audio/*  → AudioViewer
+ *   application/pdf → PdfViewer (pages drawn with pdf.js; the file itself
+ *                     is still served as a download)
  *   anything else → FallbackViewer
  *
  * Audio dispatches on the MIME prefix rather than on `bucketForMime`, which
  * answers the coarser question the grid and the picker ask (is this a picture
- * or not). Documents and archives stay with the fallback on purpose: they are
- * served as downloads, so there is nothing to render in place.
+ * or not). Other documents and archives stay with the fallback on purpose:
+ * they are served as downloads, so there is nothing to render in place.
  *
  * The dispatcher lives in one file so adding a new viewer type later is a
  * single edit here.
@@ -20,6 +22,8 @@ import { ImageViewer } from './ImageViewer'
 import { VideoViewer } from './VideoViewer'
 import { AudioViewer } from './AudioViewer'
 import { FallbackViewer } from './FallbackViewer'
+import { PdfViewer } from './PdfViewer'
+import { isPdfAsset } from '../../pdf/pdfDocument'
 
 interface ViewerBodyProps {
   asset: CmsMediaAsset
@@ -35,6 +39,9 @@ export function ViewerBody({ asset }: ViewerBodyProps) {
   }
   if (asset.mimeType.startsWith('audio/')) {
     return <AudioViewer src={asset.publicPath} />
+  }
+  if (isPdfAsset(asset)) {
+    return <PdfViewer key={asset.id} asset={asset} />
   }
   return (
     <FallbackViewer

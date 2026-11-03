@@ -522,7 +522,11 @@ publishDraftSite (server/publish/publishSite.ts)
     ├─→ load draft site shell + all page-table rows + all VC rows
     ├─→ build runtime scripts + runtime package importmap
     ├─→ build EVERYTHING expensive first, outside any transaction — dependency
-    │     cache (`bun install`), importmap, per-page esbuild runtime builds.
+    │     cache (`bun install`), importmap, runtime script builds. Builds are
+    │     shared through `createSiteRuntimeBuildCache()`: pages that load the
+    │     same scripts get one esbuild run, re-addressed under each page's
+    │     version path (outputs import each other relatively, so the bytes
+    │     do not depend on the base path).
     │     The SQLite adapter serializes all transactions through one chain, so
     │     this work inside the transaction would stall every concurrent write.
     ├─→ short transaction: write the SiteDocument ONCE into site_snapshots

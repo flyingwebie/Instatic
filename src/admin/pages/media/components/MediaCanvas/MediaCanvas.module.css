@@ -157,6 +157,15 @@
     object-fit: cover;
 }
 
+/* A document page is portrait: show the top of it (title and cover), not a
+ * centered crop through the middle of the text. */
+.tilePdfPage {
+    width: 100%;
+    height: 100%;
+    object-fit: cover;
+    object-position: top center;
+}
+
 .tileBody {
     display: flex;
     flex-direction: column;

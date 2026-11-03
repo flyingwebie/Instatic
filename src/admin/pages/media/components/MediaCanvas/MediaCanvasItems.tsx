@@ -11,11 +11,14 @@ import { ArrowUpIcon } from 'pixel-art-icons/icons/arrow-up'
 import { FolderGlyphIcon } from 'pixel-art-icons/icons/folder-glyph'
 import { Image2SolidIcon } from 'pixel-art-icons/icons/image-2-solid'
 import { VideoSolidIcon } from 'pixel-art-icons/icons/video-solid'
+import { FileTextSolidIcon } from 'pixel-art-icons/icons/file-text-solid'
 import type { CmsMediaAsset, CmsMediaFolder } from '@core/persistence/cmsMedia'
 import type { FolderSelection } from '../../hooks/useMediaWorkspace'
 import { bucketForMime } from '../../utils/filters'
 import { blurHashToDataUrl, pickVariantUrl } from '../../utils/variants'
 import { formatBytes } from '@admin/lib/formatBytes'
+import { isPdfAsset } from '../../pdf/pdfDocument'
+import { PdfThumbnail } from './PdfThumbnail'
 import styles from './MediaCanvas.module.css'
 
 export interface ParentFolderEntry {
@@ -84,8 +87,15 @@ export function AssetTile({
             <img src={thumbUrl} alt="" className={styles.tileImage} loading="lazy" decoding="async" draggable={false} />
           ) : bucket === 'video' ? (
             <video src={asset.publicPath} preload="metadata" muted className={styles.tileVideo} draggable={false} />
+          ) : isPdfAsset(asset) ? (
+            <PdfThumbnail
+              asset={asset}
+              cssWidth={TILE_CSS_WIDTH}
+              imageClassName={styles.tilePdfPage}
+              fallback={<FileTextSolidIcon size={28} />}
+            />
           ) : (
-            <FolderGlyphIcon size={28} />
+            <FileTextSolidIcon size={28} />
           )}
         </span>
         <span className={styles.tileBody}>
@@ -138,8 +148,10 @@ export function AssetRow({
             <img src={thumbUrl} alt="" className={styles.rowImage} loading="lazy" decoding="async" />
           ) : bucket === 'video' ? (
             <VideoSolidIcon size={13} />
-          ) : (
+          ) : bucket === 'image' ? (
             <Image2SolidIcon size={13} />
+          ) : (
+            <FileTextSolidIcon size={13} />
           )}
         </span>
         <span className={styles.rowLabel}>{asset.filename}</span>

@@ -33,7 +33,7 @@ import {
   type PublishedPageSnapshot,
   type PublishedPageVersionWrite,
 } from '../repositories/publish'
-import { buildSiteRuntimeScripts } from './runtime/bundleScripts'
+import { buildSiteRuntimeScripts, createSiteRuntimeBuildCache } from './runtime/bundleScripts'
 import { RuntimeScriptBuildError } from './runtime/buildError'
 import { ensureRuntimeDependencyCache } from './runtime/dependencyCache'
 import {
@@ -147,6 +147,9 @@ async function publishSiteDocumentLocked(
   // published pages serve their scripts straight off disk (not the DB).
   const runtimeAssetFiles: Array<{ publicPath: string; bytes: Uint8Array }> = []
   const pageWrites: PublishedPageVersionWrite[] = []
+  // Most pages load the same site-wide scripts: bundle each distinct
+  // selection once per publish instead of once per page.
+  const runtimeBuildCache = createSiteRuntimeBuildCache()
   for (const page of publishedSite.pages) {
     const versionNumber = await nextDataRowVersionNumber(db, page.id)
     const versionId = nanoid()
@@ -156,6 +159,7 @@ async function publishSiteDocumentLocked(
       target: 'publish',
       assetBasePath: `/_instatic/assets/${versionId}/`,
       dependencyCache,
+      buildCache: runtimeBuildCache,
     })
     const runtimeErrors = runtimeBuild.diagnostics.filter((d) => d.severity === 'error')
     if (runtimeErrors.length > 0) {

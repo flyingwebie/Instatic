@@ -1,0 +1,48 @@
+.root {
+  display: flex;
+  flex: 1 1 auto;
+  flex-direction: column;
+  min-height: 0;
+  background: var(--bg-surface-2);
+}
+
+.toolbar {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: var(--space-s);
+  padding: var(--space-s) var(--space-l);
+  border-bottom: 1px solid var(--border-subtle);
+}
+
+.meta {
+  font-size: var(--text-xs);
+  color: var(--text-subtle);
+}
+
+.pages {
+  display: flex;
+  flex: 1 1 auto;
+  flex-direction: column;
+  align-items: center;
+  gap: var(--space-l);
+  min-height: 0;
+  padding: var(--space-l);
+  overflow-y: auto;
+}
+
+.page {
+  flex: 0 0 auto;
+  width: var(--pdf-page-width);
+  height: var(--pdf-page-height);
+  background: var(--bg-surface-3);
+  border-radius: var(--radius-sm);
+  overflow: hidden;
+  box-shadow: var(--shadow-panel);
+}
+
+.canvas {
+  display: block;
+  width: 100%;
+  height: 100%;
+}

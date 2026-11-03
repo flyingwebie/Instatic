@@ -6,6 +6,22 @@ This project is pre-1.0. Breaking changes may appear in minor or patch releases 
 
 ## Unreleased
 
+## 0.0.25 - 2026-11-03
+
+### AI editing and connection reliability
+
+- AI edits (MCP, the `instatic` CLI and the in-editor agent) now report success only once the server has confirmed receiving them. An edit the editor refused (offline, still syncing) or the server reverted comes back as a clear error instead of an "updated" result describing the old content.
+- The editor no longer shows "Offline — reconnecting" when the tab was only busy drawing a large change, such as a whole page replaced by an AI agent.
+
+### Publishing
+
+- Publishing is faster: pages that load the same scripts share one script build instead of rebuilding it for every page.
+
+### Media
+
+- PDFs now preview in the media library: the grid shows each PDF's first page, and the viewer shows every page with a page count and a Download button. PDFs are still served as downloads; the preview draws the pages without running anything inside the file.
+- Non-image documents show a file icon in the grid instead of a folder icon.
+
 ## 0.0.24 - 2026-10-30
 
 ### Admin, media, and CLI

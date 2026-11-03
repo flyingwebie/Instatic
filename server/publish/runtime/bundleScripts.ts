@@ -35,6 +35,23 @@ export interface SiteRuntimeBuildResult {
   diagnostics: SiteRuntimeDiagnostic[]
 }
 
+/**
+ * A build before it is given a public URL. Output paths are relative and
+ * chunks import each other relatively, so the bytes do not depend on where
+ * the files are served from; only `publicPath`/`src` do.
+ */
+interface UnaddressedRuntimeBuild {
+  files: Array<Omit<BuiltRuntimeAssetFile, 'publicPath'>>
+  scripts: Array<Omit<PublishedRuntimeScriptAsset, 'src'> & { path: string }>
+  diagnostics: SiteRuntimeDiagnostic[]
+}
+
+export type SiteRuntimeBuildCache = Map<string, Promise<UnaddressedRuntimeBuild>>
+
+export function createSiteRuntimeBuildCache(): SiteRuntimeBuildCache {
+  return new Map()
+}
+
 interface BuildSiteRuntimeScriptsBaseInput {
   site: SiteDocument
   target: SiteRuntimeTarget
@@ -43,6 +60,12 @@ interface BuildSiteRuntimeScriptsBaseInput {
   dependencyNodeModulesDir?: string
   /** Override the bundle timeout (ms). Mainly for tests. */
   bundleTimeoutMs?: number
+  /**
+   * Share builds across calls for the SAME site (one publish). Pages that
+   * load the same scripts get byte-identical bundles, so each distinct
+   * script selection is built once and only re-addressed per page.
+   */
+  buildCache?: SiteRuntimeBuildCache
 }
 
 export type BuildSiteRuntimeScriptsInput = BuildSiteRuntimeScriptsBaseInput & (
@@ -141,16 +164,15 @@ function uniqueClassicOutputPath(
  */
 async function buildClassicRuntimeFiles(
   scripts: RuntimeScriptEntry[],
-  assetBasePath: string,
   minify: boolean,
 ): Promise<{
-  files: BuiltRuntimeAssetFile[]
-  assets: PublishedRuntimeScriptAsset[]
+  files: UnaddressedRuntimeBuild['files']
+  assets: UnaddressedRuntimeBuild['scripts']
   diagnostics: SiteRuntimeDiagnostic[]
 }> {
   const usedPaths = new Set<string>()
-  const files: BuiltRuntimeAssetFile[] = []
-  const assets: PublishedRuntimeScriptAsset[] = []
+  const files: UnaddressedRuntimeBuild['files'] = []
+  const assets: UnaddressedRuntimeBuild['scripts'] = []
   const diagnostics: SiteRuntimeDiagnostic[] = []
 
   const compiled = await Promise.all(scripts.map(async (script) => {
@@ -172,17 +194,15 @@ async function buildClassicRuntimeFiles(
     const { content, diagnostics: scriptDiagnostics } = compiled[index]!
     diagnostics.push(...scriptDiagnostics)
     const path = uniqueClassicOutputPath(script, index, usedPaths)
-    const publicPath = joinPublicPath(assetBasePath, path)
     files.push({
       path,
-      publicPath,
       content,
       bytes: textEncoder.encode(content),
       contentType: contentTypeForPath(path),
     })
     assets.push({
       fileId: script.file.id,
-      src: publicPath,
+      path,
       format: 'classic',
       placement: script.config.placement,
       timing: script.config.timing,
@@ -193,12 +213,37 @@ async function buildClassicRuntimeFiles(
   return { files, assets, diagnostics }
 }
 
-function emptyRuntimeBuild(diagnostics: SiteRuntimeDiagnostic[] = []): SiteRuntimeBuildResult {
+function emptyRuntimeBuild(diagnostics: SiteRuntimeDiagnostic[] = []): UnaddressedRuntimeBuild {
+  return { files: [], scripts: [], diagnostics }
+}
+
+/** Give a build its public URLs under `assetBasePath`. */
+function addressRuntimeBuild(
+  build: UnaddressedRuntimeBuild,
+  assetBasePath: string,
+): SiteRuntimeBuildResult {
   return {
-    files: [],
-    runtimeAssets: { scripts: [] },
-    diagnostics,
+    files: build.files.map((file) => ({
+      ...file,
+      publicPath: joinPublicPath(assetBasePath, file.path),
+    })),
+    runtimeAssets: {
+      scripts: build.scripts
+        .map(({ path, ...script }) => ({ ...script, src: joinPublicPath(assetBasePath, path) }))
+        .sort((a, b) => a.priority - b.priority || a.src.localeCompare(b.src)),
+    },
+    diagnostics: build.diagnostics,
   }
+}
+
+/** Everything that decides a build's bytes, for one site. */
+function runtimeBuildKey(input: BuildSiteRuntimeScriptsInput, selectedScripts: RuntimeScriptEntry[]): string {
+  return JSON.stringify([
+    input.target,
+    input.dependencyCache?.nodeModulesDir ?? null,
+    input.dependencyNodeModulesDir ?? null,
+    selectedScripts.map((entry) => [entry.file.id, entry.config]),
+  ])
 }
 
 function diagnosticPathInsideWorkspace(path: string, rootDir: string): string | undefined {
@@ -320,18 +365,31 @@ export async function buildSiteRuntimeScripts(
     })
   }
 
-  if (selectedScripts.length === 0) return emptyRuntimeBuild()
+  if (selectedScripts.length === 0) return addressRuntimeBuild(emptyRuntimeBuild(), input.assetBasePath)
 
+  const cache = input.buildCache
+  if (!cache) {
+    return addressRuntimeBuild(await buildSelectedRuntimeScripts(input, selectedScripts), input.assetBasePath)
+  }
+  const key = runtimeBuildKey(input, selectedScripts)
+  let pending = cache.get(key)
+  if (!pending) {
+    pending = buildSelectedRuntimeScripts(input, selectedScripts)
+    cache.set(key, pending)
+  }
+  return addressRuntimeBuild(await pending, input.assetBasePath)
+}
+
+async function buildSelectedRuntimeScripts(
+  input: BuildSiteRuntimeScriptsInput,
+  selectedScripts: RuntimeScriptEntry[],
+): Promise<UnaddressedRuntimeBuild> {
   const moduleScripts = selectedScripts.filter((entry) => scriptFormat(entry) === 'module')
   const classicScripts = selectedScripts.filter((entry) => scriptFormat(entry) === 'classic')
   // Publish output is compressed; the canvas keeps the author's bytes so the
   // debugger maps to the source they are editing.
   const minifyOutput = input.target === 'publish'
-  const classicBuild = await buildClassicRuntimeFiles(
-    classicScripts,
-    input.assetBasePath,
-    minifyOutput,
-  )
+  const classicBuild = await buildClassicRuntimeFiles(classicScripts, minifyOutput)
   const classicDiagnostics = classicBuild.diagnostics
 
   const packageJson = clonePackageJson(input.site.packageJson ?? DEFAULT_SITE_PACKAGE_JSON)
@@ -348,11 +406,7 @@ export async function buildSiteRuntimeScripts(
 
   if (moduleScripts.length === 0) {
     if (classicDiagnostics.length > 0) return emptyRuntimeBuild(staticDiagnostics)
-    return {
-      files: classicBuild.files,
-      runtimeAssets: { scripts: classicBuild.assets },
-      diagnostics: staticDiagnostics,
-    }
+    return { files: classicBuild.files, scripts: classicBuild.assets, diagnostics: staticDiagnostics }
   }
 
   const workspace = await materializeSiteScriptWorkspace(input.site)
@@ -363,11 +417,7 @@ export async function buildSiteRuntimeScripts(
 
     if (entryPoints.length === 0) {
       if (classicDiagnostics.length > 0) return emptyRuntimeBuild(staticDiagnostics)
-      return {
-        files: classicBuild.files,
-        runtimeAssets: { scripts: classicBuild.assets },
-        diagnostics: staticDiagnostics,
-      }
+      return { files: classicBuild.files, scripts: classicBuild.assets, diagnostics: staticDiagnostics }
     }
 
     const outputRoot = 'out'
@@ -440,13 +490,12 @@ export async function buildSiteRuntimeScripts(
       const path = toPosixPath(relative(`${workspace.rootDir}/${outputRoot}`, file.path))
       return {
         path,
-        publicPath: joinPublicPath(input.assetBasePath, path),
         content: file.text,
         bytes: file.contents,
         contentType: contentTypeForPath(path),
       }
     })
-    const publicPathByOutput = new Map(files.map((file) => [`${outputRoot}/${file.path}`, file.publicPath]))
+    const outputPaths = new Set(files.map((file) => `${outputRoot}/${file.path}`))
     const selectedByEntryPoint = selectedScriptByEntryPoint(
       moduleScripts,
       workspace.entryPointByFileId,
@@ -457,29 +506,26 @@ export async function buildSiteRuntimeScripts(
       .map(([
         outputPath,
         output,
-      ]): PublishedRuntimeScriptAsset | null => {
+      ]): UnaddressedRuntimeBuild['scripts'][number] | null => {
         if (!output.entryPoint) return null
         const script = selectedByEntryPoint.get(output.entryPoint)
-        const src = publicPathByOutput.get(outputPath)
-        if (!script || !src) return null
+        if (!script || !outputPaths.has(outputPath)) return null
         return {
           fileId: script.file.id,
-          src,
+          path: outputPath.slice(outputRoot.length + 1),
           format: 'module' as const,
           placement: script.config.placement,
           timing: script.config.timing,
           priority: script.config.priority,
         }
       })
-      .filter((script): script is PublishedRuntimeScriptAsset => script !== null)
-    const scripts = [...moduleAssetScripts, ...classicBuild.assets]
-      .sort((a, b) => a.priority - b.priority || a.src.localeCompare(b.src))
+      .filter((script): script is UnaddressedRuntimeBuild['scripts'][number] => script !== null)
 
     if (classicDiagnostics.length > 0) return emptyRuntimeBuild(staticDiagnostics)
 
     return {
       files: [...files, ...classicBuild.files],
-      runtimeAssets: { scripts },
+      scripts: [...moduleAssetScripts, ...classicBuild.assets],
       diagnostics: staticDiagnostics,
     }
   } catch (error) {
