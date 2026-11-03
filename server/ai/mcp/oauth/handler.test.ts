@@ -87,6 +87,7 @@ describe('MCP OAuth protocol endpoints', () => {
     expect(serverBody.registration_endpoint).toBe('https://cms.example.com/_instatic/oauth/register')
     expect(serverBody.code_challenge_methods_supported).toEqual(['S256'])
     expect(serverBody.token_endpoint_auth_methods_supported).toEqual(['none'])
+    expect(serverBody.authorization_response_iss_parameter_supported).toBe(true)
   })
 
   it('dynamically registers a public Claude client', async () => {

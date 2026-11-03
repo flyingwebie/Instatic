@@ -78,6 +78,7 @@ describe('MCP OAuth authorization consent handler', () => {
     expect(`${redirect.origin}${redirect.pathname}`).toBe(CALLBACK)
     expect(redirect.searchParams.get('code')).toMatch(/^imcp_ac_/)
     expect(redirect.searchParams.get('state')).toBe('client-state')
+    expect(redirect.searchParams.get('iss')).toBe(new URL(request.resource).origin)
 
     const overview = await readJson<McpConnectionOverview>(await harness.ai(CONNECTIONS, { cookie }))
     expect(overview.connections).toHaveLength(1)
@@ -103,6 +104,7 @@ describe('MCP OAuth authorization consent handler', () => {
     expect(`${redirect.origin}${redirect.pathname}`).toBe(CALLBACK)
     expect(redirect.searchParams.get('error')).toBe('access_denied')
     expect(redirect.searchParams.get('state')).toBe('client-state')
+    expect(redirect.searchParams.get('iss')).toBe(new URL(request.resource).origin)
 
     const overview = await readJson<McpConnectionOverview>(await harness.ai(CONNECTIONS, { cookie }))
     expect(overview.connections).toHaveLength(0)

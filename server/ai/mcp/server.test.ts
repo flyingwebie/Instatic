@@ -7,7 +7,7 @@ import { runMigrations } from '../../db/runMigrations'
 import type { DbClient } from '../../db/client'
 import { createDataRow } from '../../repositories/data'
 import { resolveBridgeToolResult } from '../runtime'
-import { buildMcpServer } from './server'
+import { buildMcpServer, WORKSPACE_NOT_CONNECTED_META } from './server'
 import { createEditorBridgeStream } from './editorBridge'
 import { MAIN_SCOPE } from '../../branches/scope'
 
@@ -102,6 +102,7 @@ describe('mcp server', () => {
     expect(result.isError).toBe(true)
     const text = (result.content as Array<{ type: string; text: string }>)[0].text
     expect(text).toContain('Site editor')
+    expect(result._meta).toMatchObject(WORKSPACE_NOT_CONNECTED_META)
     await client.close()
   })
 

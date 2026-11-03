@@ -12,7 +12,7 @@ The UI exposes two credential lifecycles instead of a cosmetic local/remote swit
 
 | Mode | Intended client | Authentication | Lifecycle |
 |---|---|---|---|
-| Hosted OAuth | Claude custom connectors and other remote MCP clients | OAuth authorization code with S256 PKCE | The client discovers the authorization server, dynamically registers, and sends the user to Instatic for consent. Access tokens last up to one hour; refresh tokens rotate; the grant expires after 90 days. |
+| Hosted OAuth | Claude custom connectors, the [`instatic` CLI](cli.md), and other remote MCP clients | OAuth authorization code with S256 PKCE | The client discovers the authorization server, dynamically registers, and sends the user to Instatic for consent. Access tokens last up to one hour; refresh tokens rotate; the grant expires after 90 days. |
 | Personal access token | Claude Code, Codex, Cursor, local bridges, and clients that accept an explicit header | `Authorization: Bearer imcp_pat_…` | Created after step-up authentication, shown once, scoped to selected capabilities, configurable expiry, independently revocable. |
 
 Both modes resolve to the same persistent connection grant and the same `toolAllowedForCapabilities` gate. OAuth does not create a wider tool path.
@@ -58,6 +58,8 @@ Instatic implements the MCP authorization-server surface directly:
 | `/_instatic/oauth/register` | Dynamic client registration for public clients. |
 | `/admin/ai/oauth/authorize` | Signed-in consent screen. |
 | `/_instatic/oauth/token` | Form-encoded authorization-code and refresh-token exchange. |
+
+Every redirect back to the client — approval and denial alike — carries `iss` (RFC 9207), and the authorization-server metadata advertises `authorization_response_iss_parameter_supported: true`. A client signed in to several sites uses it to reject a code that came from a different authorization server than the one it started with (the mix-up attack).
 
 The issuer, the `resource` value, and every URL in these documents come from the configured public origin (`PUBLIC_ORIGIN`, auto-detected from `RENDER_EXTERNAL_URL` / `RAILWAY_PUBLIC_DOMAIN` on Render and Railway), never from the inbound `Host` header. Remote OAuth connectors therefore require `PUBLIC_ORIGIN`. Without it, both discovery endpoints answer `503` with `{ "error": "MCP OAuth needs PUBLIC_ORIGIN to be configured for this deployment." }`, the token endpoint answers `503` with `temporarily_unavailable`, the `401` challenge on `/_instatic/mcp` carries `scope="mcp"` but no `resource_metadata`, and OAuth access tokens do not authenticate. Personal access tokens keep working. Requests addressed to a loopback host (`localhost`, `127.0.0.1`, `::1`) are exempt and use their own origin so local development keeps working; the server warns at boot when no public origin is configured.
 
@@ -154,7 +156,7 @@ executeAiTool(...) / live editor bridge
 | `server.ts` / `registry.ts` | Low-level SDK server, TypeBox input schemas, catalog deduplication, and capability filtering. |
 | `editorBridge.ts` | Per-user, per-scope live workspace bridge. Each tab sends a stable `tabId` and keeps its **claim** across reconnects: calls route to the most recently opened tab, a tab reconnecting after an idle recycle never steals the workspace back, superseded tabs stay connected (their in-flight calls finish) and take over when the active tab closes. `waitForEditorWorkspace` lets a call wait for a tab to (re)connect. Tool requests are delivered **serially** (the next is pushed only once the previous settles, matching the editor's one-at-a-time execution), so each call's 90s timeout measures the editor's actual work, not time queued behind slower calls. The stream carries an **idle lease** (120s, re-armed by every relayed tool request and never expiring while a call is pending) so an active batch is never cut mid-flight; only quiet streams recycle. The workspace's reconnect loop (`useMcpWorkspaceBridge`) reopens a recycled healthy stream immediately off the stream-end network event — deliberately timer-free, because hidden webviews (backgrounded browser tabs) clamp timers to minutes while network events still fire — and a tab becoming visible short-circuits any pending retry delay. |
 | `tools/publishTool.ts` | Explicit canonical full-site publish with MCP audit metadata. |
-| `tools/uploadMediaTool.ts` | Server-resolved image upload (`media_upload`) — inline base64 or SSRF-guarded `sourceUrl` download, through the shared media pipeline. |
+| `tools/uploadMediaTool.ts` | Server-resolved media upload (`media_upload`), under the installation's upload policy — inline base64 or SSRF-guarded `sourceUrl` download, through the shared media pipeline. |
 
 ## Tool execution model
 
@@ -162,11 +164,11 @@ MCP exposes the full deduplicated tool catalog, filtered by the connection's cap
 
 Server-resolved tools work without an editor open. They include content reads, `get_context`, `site_list_documents`, `site_read_styles`, `site_list_breakpoints`, `media_upload`, and explicit `site_publish`. Publishing requires `ai.tools.write` plus `pages.publish`, runs the canonical full-site pipeline, swaps the static slot atomically, and records the connection id in the publish audit event.
 
-`media_upload` is the one server-resolved write that mutates outside the live editor draft: it adds an image to the Media library through the same `acceptUploadedMedia` core the HTTP route uses (magic-byte sniffing, SVG sanitisation, storage dispatch, responsive variants). Bytes arrive inline (base64) or via an https `sourceUrl` the host downloads under the plugin network layer's SSRF blocklist — https-only, DNS-resolved, per-redirect-hop re-validation, size-capped. It requires `ai.tools.write` plus `media.write`.
+`media_upload` is the one server-resolved write that mutates outside the live editor draft: it adds a file to the Media library through the same `acceptUploadedMedia` core the HTTP route uses (magic-byte sniffing, SVG sanitisation, storage dispatch, responsive variants). It accepts exactly the types the installation's upload policy allows (**Settings → Uploads**, see [media](media.md) → "Accepted file types"), so documents, video, and fonts work wherever the Media workspace accepts them. Bytes arrive inline (base64) or via an https `sourceUrl` the host downloads under the plugin network layer's SSRF blocklist — https-only, DNS-resolved, per-redirect-hop re-validation, size-capped. It requires `ai.tools.write` plus `media.write`.
 
 Browser tools run against the connection owner's live workspace. Site structure, HTML/CSS, page lifecycle, design-token, content mutation, code-asset, and live-DOM tools route to the matching open Site or Content workspace. `tools/list` states that requirement in each browser tool's description, so a client learns the precondition when it picks the tool rather than from a failed call.
 
-An open workspace's stream has routine gaps (idle recycle, reconnect after a network blip, server restart), so a browser tool **waits up to 15 seconds** for the workspace to connect before failing with a scope-specific "ask the user to open it" error; headless tools remain available meanwhile. Interrupted calls are reported by what the agent can rely on (`BrowserToolInterruptedError.delivered` in `server/ai/runtime/transport.ts`):
+An open workspace's stream has routine gaps (idle recycle, reconnect after a network blip, server restart), so a browser tool **waits up to 15 seconds** for the workspace to connect before failing with a scope-specific "ask the user to open it" error; headless tools remain available meanwhile. That error result carries `_meta: { "instatic/error": "workspace_not_connected" }` (`WORKSPACE_NOT_CONNECTED_META` in `server.ts`), so a client can tell "open the editor, then retry" from other tool errors without matching message text. Interrupted calls are reported by what the agent can rely on (`BrowserToolInterruptedError.delivered` in `server/ai/runtime/transport.ts`):
 
 | Situation | Behaviour |
 |---|---|

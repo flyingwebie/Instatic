@@ -90,6 +90,32 @@ function interruptionMessage(
   return `The ${label} tab disconnected while "${toolName}" was running, so the result is unknown: the edit may or may not have been applied. ${STATE_CHECK_HINT[scope]}`
 }
 
+/**
+ * `_meta` marker on the "no workspace connected" result, so a client can tell
+ * "open the editor, then retry" apart from every other tool error without
+ * matching message text. The instatic CLI maps it to its own exit code.
+ */
+export const WORKSPACE_NOT_CONNECTED_META = { 'instatic/error': 'workspace_not_connected' } as const
+
+function workspaceNotConnected(scope: EditorBridgeScope): CallToolResult {
+  return {
+    isError: true,
+    content: [{ type: 'text', text: NO_WORKSPACE_MESSAGE[scope] }],
+    _meta: { ...WORKSPACE_NOT_CONNECTED_META },
+  }
+}
+
+/** The editor tab closed before the call reached it and no other tab took over. */
+class WorkspaceNotConnectedError extends Error {
+  readonly scope: EditorBridgeScope
+
+  constructor(scope: EditorBridgeScope, options?: { cause?: unknown }) {
+    super(NO_WORKSPACE_MESSAGE[scope], options)
+    this.name = 'WorkspaceNotConnectedError'
+    this.scope = scope
+  }
+}
+
 function isUndeliveredClosure(err: unknown): boolean {
   return err instanceof BrowserToolInterruptedError && !err.delivered && err.reason === 'closed'
 }
@@ -212,12 +238,7 @@ export function buildMcpServer(ctx: McpServerContext): Server {
       const connect = () => waitForEditorWorkspace(ctx.userId, scope, { timeoutMs: waitMs, signal })
 
       const initial = await connect()
-      if (!initial) {
-        return project({
-          isError: true,
-          content: [{ type: 'text', text: NO_WORKSPACE_MESSAGE[scope] }],
-        })
-      }
+      if (!initial) return project(workspaceNotConnected(scope))
 
       const run = async (
         workspace: EditorWorkspace,
@@ -246,7 +267,7 @@ export function buildMcpServer(ctx: McpServerContext): Server {
             // editor never saw it: retry once on whichever tab is live now.
             if (!isUndeliveredClosure(err)) throw err
             const next = await connect()
-            if (!next) throw new Error(NO_WORKSPACE_MESSAGE[scope], { cause: err })
+            if (!next) throw new WorkspaceNotConnectedError(scope, { cause: err })
             return run(next, toolName, input)
           }
         },
@@ -274,6 +295,7 @@ export function buildMcpServer(ctx: McpServerContext): Server {
         snapshot: null,
       })
     } catch (err) {
+      if (err instanceof WorkspaceNotConnectedError) return project(workspaceNotConnected(err.scope))
       // Browser bridge rejection is terminal for a chat turn, but MCP has no
       // surrounding provider loop to terminate. Translate the same transport
       // failure into the protocol's normal tool-error result instead of
