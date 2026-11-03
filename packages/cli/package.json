@@ -1,0 +1,33 @@
+{
+  "name": "@flyingwebie/instatic",
+  "version": "0.1.1",
+  "description": "Unofficial command-line client for Instatic sites: drive the visual editor, publish, and upload media from a terminal or an AI agent. Not affiliated with the Instatic project.",
+  "license": "MIT",
+  "type": "module",
+  "bin": {
+    "instatic": "dist/instatic.js"
+  },
+  "files": [
+    "dist",
+    "README.md"
+  ],
+  "engines": {
+    "node": ">=20"
+  },
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/flyingwebie/Instatic.git",
+    "directory": "packages/cli"
+  },
+  "keywords": [
+    "instatic",
+    "cms",
+    "mcp",
+    "cli",
+    "ai-agents"
+  ],
+  "scripts": {
+    "build": "bun run ../../scripts/build-cli.ts",
+    "prepublishOnly": "bun run build"
+  }
+}

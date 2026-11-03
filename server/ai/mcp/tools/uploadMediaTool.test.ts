@@ -1,13 +1,23 @@
-import { describe, expect, it, spyOn } from 'bun:test'
+import { beforeAll, describe, expect, it, spyOn } from 'bun:test'
 import { uploadMediaMcpTool } from './uploadMediaTool'
 import type { ToolContext } from '../../runtime/types'
+import type { DbClient } from '../../../db/client'
+import { createSqliteClient } from '../../../db/sqlite'
+import { sqliteMigrations } from '../../../db/migrations-sqlite'
+import { runMigrations } from '../../../db/runMigrations'
+import { setAllowedUploadMimes } from '../../../repositories/mediaUploadPolicy'
 
 // The handler validates input, the source selector, and the SSRF guard BEFORE
-// it ever touches `ctx.db` or the storage layer, so these paths need no real
-// db/network/DNS. IP-literal hosts short-circuit DNS resolution, letting us
-// exercise the blocklist deterministically.
+// it touches the storage layer, so these paths need no network/DNS: the db is
+// only read for the upload policy. IP-literal hosts short-circuit DNS
+// resolution, letting us exercise the blocklist deterministically.
+let db: DbClient
+beforeAll(async () => {
+  db = createSqliteClient(':memory:')
+  await runMigrations(db, sqliteMigrations)
+})
+
 const baseCtx = {
-  db: {} as never,
   userId: 'user-1',
   capabilities: [],
   scope: 'content' as const,
@@ -19,7 +29,7 @@ function upload(
   input: Record<string, unknown>,
   signal = new AbortController().signal,
 ): Promise<unknown> {
-  const ctx: ToolContext = { ...baseCtx, signal }
+  const ctx: ToolContext = { ...baseCtx, db, signal }
   return uploadMediaMcpTool.handler!(input, ctx)
 }
 
@@ -45,10 +55,20 @@ describe('media_upload', () => {
     }
   })
 
-  it('rejects inline bytes that are not a supported image', async () => {
+  it('rejects inline bytes that are not a supported file type', async () => {
     // "AAAA" decodes to 3 zero bytes — no magic-byte signature matches, so the
-    // shared upload core rejects it before any storage/db work.
-    await expect(upload({ filename: 'x.png', data: 'AAAA' })).rejects.toThrow(/JPEG|PNG|image/i)
+    // shared upload core rejects it before any storage work.
+    await expect(upload({ filename: 'x.png', data: 'AAAA' })).rejects.toThrow(/can be uploaded/i)
+  })
+
+  it('follows the site upload policy instead of a fixed image list', async () => {
+    const pdf = Buffer.from('%PDF-1.7\n%\xE2\xE3\xCF\xD3\n1 0 obj\n<<>>\nendobj\n', 'latin1').toString('base64')
+    await setAllowedUploadMimes(db, ['image/png'], null)
+    try {
+      await expect(upload({ filename: 'spec.pdf', data: pdf })).rejects.toThrow(/Only PNG/)
+    } finally {
+      await setAllowedUploadMimes(db, ['image/png', 'application/pdf'], null)
+    }
   })
 
   it('rejects malformed base64 instead of silently decoding it', async () => {

@@ -24,10 +24,12 @@
  *   - `@modelcontextprotocol/*`         — the official split v2 packages are
  *                                         allowed ONLY under `server/ai/mcp/`,
  *                                         where Instatic implements an MCP
- *                                         *server* (a real wire protocol — a
- *                                         legitimate SDK use). Still banned in
- *                                         the drivers and the browser, which
- *                                         must never speak MCP.
+ *                                         *server*, and `packages/cli/`, the
+ *                                         `instatic` CLI that is a client of
+ *                                         that server (a real wire protocol —
+ *                                         a legitimate SDK use). Still banned
+ *                                         in the drivers and the browser,
+ *                                         which must never speak MCP.
  */
 
 import { describe, it, expect } from 'bun:test'
@@ -35,7 +37,7 @@ import { readdirSync, readFileSync, statSync, existsSync } from 'fs'
 import { join, extname, relative } from 'path'
 
 const REPO_ROOT = join(import.meta.dir, '../../../')
-const SCAN_DIRS = ['src', 'server']
+const SCAN_DIRS = ['src', 'server', 'packages']
 
 interface PackageRule {
   /** Display name in error messages. */
@@ -77,9 +79,9 @@ const RULES: PackageRule[] = [
   {
     label: '@modelcontextprotocol/*',
     importRe: /from\s+['"]@modelcontextprotocol\/(?:server|client|core|node|sdk)(?:\/[^'"]*)?['"]|require\s*\(\s*['"]@modelcontextprotocol\/(?:server|client|core|node|sdk)(?:\/[^'"]*)?['"]\s*\)/,
-    // Allowed only inside the MCP server module — banned everywhere else.
+    // Allowed only inside the MCP server module and the CLI that talks to it.
     allowed: [],
-    allowedPrefixes: ['server/ai/mcp/'],
+    allowedPrefixes: ['server/ai/mcp/', 'packages/cli/'],
   },
   {
     label: 'zod',

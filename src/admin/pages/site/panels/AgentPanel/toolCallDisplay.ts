@@ -91,6 +91,8 @@ export function getToolCallDisplay(actionType: string, params: unknown): ToolCal
       return display('Reading code asset', codeAssetDetail(p), 'code', 'read')
     case 'write_code_asset':
       return display('Writing code asset', codeAssetDetail(p), 'code', 'write')
+    case 'write_page_script':
+      return display('Writing page script', pageDetail(p.pageId), 'code', 'write')
     case 'patch_code_asset':
       return display('Patching code asset', codeAssetDetail(p), 'code', 'write')
     case 'inspect_code_runtime':

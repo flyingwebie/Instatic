@@ -38,6 +38,7 @@ import {
   ListCodeAssetsInputSchema,
   ReadCodeAssetInputSchema,
   WriteCodeAssetInputSchema,
+  WritePageScriptInputSchema,
   PatchCodeAssetInputSchema,
   InspectCodeRuntimeInputSchema,
   AddPageInputSchema,
@@ -87,6 +88,7 @@ import {
   runPatchCodeAsset,
   runReadCodeAsset,
   runWriteCodeAsset,
+  runWritePageScript,
 } from './codeAssetTools'
 import { runRenderSnapshotAtBreakpoint } from './renderSnapshotAtBreakpoint'
 import { parseImportedStyleCss, runApplyCss } from './cssTools'
@@ -236,7 +238,7 @@ function runInsertHtml(input: InsertHtmlInput): AiToolOutput {
       return aiToolOk({ cssRulesCreated: result.created, cssRulesUpdated: result.updated })
     }
     const scriptHint = stripped.scripts > 0 || stripped.inlineHandlers > 0
-      ? ' Scripts and inline event handlers are stripped from HTML imports; create runtime behavior with site_write_code_asset({ type:"script", ... }) instead.'
+      ? ' Scripts and inline event handlers are stripped from HTML imports; add behavior with site_write_page_script (loads only on this page) or, for shared behavior, site_write_code_asset({ type:"script", runtime:{ scope } }) instead.'
       : ''
     return aiToolError(`HTML contained no importable elements or style rules.${scriptHint}`)
   }
@@ -376,7 +378,7 @@ function runReplaceNodeHtml(input: ReplaceNodeHtmlInput): AiToolOutput {
       return aiToolOk({ cssRulesCreated: result.created, cssRulesUpdated: result.updated })
     }
     const scriptHint = stripped.scripts > 0 || stripped.inlineHandlers > 0
-      ? ' Scripts and inline event handlers are stripped from HTML imports; create runtime behavior with site_write_code_asset({ type:"script", ... }) instead.'
+      ? ' Scripts and inline event handlers are stripped from HTML imports; add behavior with site_write_page_script (loads only on this page) or, for shared behavior, site_write_code_asset({ type:"script", runtime:{ scope } }) instead.'
       : ''
     return aiToolError(`HTML contained no importable elements or style rules.${scriptHint}`)
   }
@@ -635,6 +637,8 @@ export async function executeAgentTool(
         return await runReadCodeAsset(parseValue(ReadCodeAssetInputSchema, rawInput))
       case 'site_write_code_asset':
         return await runWriteCodeAsset(parseValue(WriteCodeAssetInputSchema, rawInput))
+      case 'site_write_page_script':
+        return runWritePageScript(parseValue(WritePageScriptInputSchema, rawInput))
       case 'site_patch_code_asset':
         return await runPatchCodeAsset(parseValue(PatchCodeAssetInputSchema, rawInput))
       case 'site_inspect_code_runtime':

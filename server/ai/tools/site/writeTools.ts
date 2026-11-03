@@ -37,6 +37,7 @@ import {
   ListCodeAssetsInputSchema,
   ReadCodeAssetInputSchema,
   WriteCodeAssetInputSchema,
+  WritePageScriptInputSchema,
   PatchCodeAssetInputSchema,
   InspectCodeRuntimeInputSchema,
   AddPageInputSchema,
@@ -246,8 +247,18 @@ const writeCodeAssetTool: AiTool = {
   execution: 'browser',
   requiredCapabilities: SITE_STRUCTURE_CAPS,
   description:
-    'Create or replace a runtime script/style file in site.files and attach normalized site.runtime config. Use `type:"script"` for behavior such as theme toggles, menus, tabs, analytics hooks, and DOM-ready interactions; use `type:"style"` ONLY for third-party/vendor CSS that must stay verbatim as a file. Never use it for page or component styling: rules inside a stylesheet file are invisible to the Selectors and CSS panels, so each element becomes hard to edit. Style the page with site_insert_html/site_replace_node_html (class= plus a <style> block) or site_apply_css instead. `path` is a safe site-relative path such as src/scripts/theme-toggle.js or src/styles/theme.css. `runtime` is optional and merges with existing/default config. For module scripts that import npm packages, use bare package imports in `content` and declare them in `dependencies` (package name → semver/range) so they are added to the site dependency manifest; do not use npm CDN URLs for npm packages.',
+    'Create or replace a runtime script/style file in site.files and attach normalized site.runtime config. For behavior on ONE page, prefer site_write_page_script (the page script the God Mode JS panel edits). Use this tool for behavior shared by several pages or a template, or site-wide behavior. A NEW script must pass runtime.scope so it only loads where it is used: { type:"pages", pageIds:[...] }, { type:"templates", templatePageIds:[...] }, or { type:"all-pages" } only for behavior every page needs (site-wide nav, analytics). Use `type:"style"` ONLY for third-party/vendor CSS that must stay verbatim as a file. Never use it for page or component styling: rules inside a stylesheet file are invisible to the Selectors and CSS panels, so each element becomes hard to edit. Style the page with site_insert_html/site_replace_node_html (class= plus a <style> block) or site_apply_css instead. `path` is a safe site-relative path such as src/scripts/theme-toggle.js or src/styles/theme.css. `runtime` merges with existing/default config. For module scripts that import npm packages, use bare package imports in `content` and declare them in `dependencies` (package name → semver/range) so they are added to the site dependency manifest; do not use npm CDN URLs for npm packages.',
   inputSchema: WriteCodeAssetInputSchema,
+}
+
+const writePageScriptTool: AiTool = {
+  name: 'site_write_page_script',
+  scope: 'site',
+  execution: 'browser',
+  requiredCapabilities: SITE_STRUCTURE_CAPS,
+  description:
+    'Write the page script for one page: the same file the God Mode JS panel edits, scoped so it loads ONLY on that page (published and in the canvas). This is the default home for page behavior — sliders, tabs, accordions, forms, animations. Creates the script on first write and replaces its full content afterwards (read it first with site_read_code_asset if you are extending it). `pageId` defaults to the page open in the editor. The script is a module running at DOM-ready; query the elements it drives by class or data attribute and exit early when they are absent. For npm packages, use bare imports and declare them in `dependencies`.',
+  inputSchema: WritePageScriptInputSchema,
 }
 
 const patchCodeAssetTool: AiTool = {
@@ -426,6 +437,7 @@ export const siteWriteTools: AiTool[] = [
   listCodeAssetsTool,
   readCodeAssetTool,
   writeCodeAssetTool,
+  writePageScriptTool,
   patchCodeAssetTool,
   inspectCodeRuntimeTool,
   addPageTool,

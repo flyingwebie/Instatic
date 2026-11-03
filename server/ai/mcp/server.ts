@@ -18,11 +18,12 @@ import type { DbClient } from '../../db/client'
 import type { CoreCapability } from '@core/capabilities'
 import { getErrorMessage } from '@core/utils/errorMessage'
 import type { AiBrowserBridge, AiTool, AiToolOutput } from '../runtime/types'
+import { BrowserToolInterruptedError } from '../runtime'
 import { executeAiTool } from '../drivers/http/execTool'
 import { mcpToolsForCapabilities } from './registry'
 import { MCP_SERVER_INSTRUCTIONS } from './instructions'
 import { authorizeMcpContentTool } from './contentAuthorization'
-import { getEditorBridgeBranch, getEditorBridgeForUser, type EditorBridgeScope } from './editorBridge'
+import { waitForEditorWorkspace, type EditorBridgeScope, type EditorWorkspace } from './editorBridge'
 import { runPublishFlush } from '../../publish/publishFlush'
 import { MAIN_SCOPE } from '../../branches/scope'
 
@@ -32,7 +33,17 @@ export interface McpServerContext {
   connectorId: string
   capabilities: readonly CoreCapability[]
   uploadsDir?: string
+  /** Test seam: how long a browser tool waits for its workspace to (re)connect. */
+  workspaceWaitMs?: number
 }
+
+/**
+ * How long a browser tool waits for the owner's workspace to connect before
+ * failing. An open editor's stream has routine gaps — the idle recycle, a
+ * reconnect after a network blip, a server restart — that last a few seconds;
+ * failing instantly inside one reads to the agent as "the tool disconnected".
+ */
+const WORKSPACE_WAIT_MS = 15_000
 
 // Used for server-resolved tools, which never call the bridge.
 const NOOP_BRIDGE: AiBrowserBridge = {
@@ -41,9 +52,72 @@ const NOOP_BRIDGE: AiBrowserBridge = {
   },
 }
 
+const WORKSPACE_LABEL: Record<EditorBridgeScope, string> = {
+  site: 'Site editor',
+  content: 'Content workspace',
+}
+
+const STATE_CHECK_HINT: Record<EditorBridgeScope, string> = {
+  site: 'Check the current state (site_read_document, site_list_code_assets) before retrying.',
+  content: 'Re-read the affected entry before retrying.',
+}
+
 const NO_WORKSPACE_MESSAGE: Record<EditorBridgeScope, string> = {
-  site: 'This tool runs in the Instatic Site editor. Open the Site editor in a browser (signed in as the connector owner) and try again.',
-  content: 'This tool runs in the Instatic Content workspace. Open the Content workspace in a browser (signed in as the connector owner) and try again.',
+  site: 'No Instatic Site editor connected within 15 seconds. This tool runs in the Site editor: ask the user to open it in a browser (signed in as the connector owner), then retry. Headless tools such as get_context keep working meanwhile.',
+  content: 'No Instatic Content workspace connected within 15 seconds. This tool runs in the Content workspace: ask the user to open it in a browser (signed in as the connector owner), then retry. Headless tools such as get_context keep working meanwhile.',
+}
+
+/**
+ * Explain an interrupted browser call in terms an external agent can act on.
+ * The transport's own messages are written for the in-app chat stream; over
+ * MCP the important fact is whether the edit could have been applied.
+ */
+function interruptionMessage(
+  err: BrowserToolInterruptedError,
+  toolName: string,
+  scope: EditorBridgeScope,
+): string {
+  const label = WORKSPACE_LABEL[scope]
+  if (!err.delivered) {
+    return `The ${label} disconnected before running "${toolName}"; nothing was applied. Retry the call. If it fails again, ask the user to check that the ${label} is open.`
+  }
+  if (err.reason === 'timeout') {
+    return `The ${label} did not finish "${toolName}" within 90 seconds. The edit may still complete. ${STATE_CHECK_HINT[scope]} Split very large edits into smaller calls.`
+  }
+  if (err.reason === 'aborted') {
+    return `"${toolName}" was cancelled before the ${label} returned a result; the edit may or may not have been applied. ${STATE_CHECK_HINT[scope]}`
+  }
+  return `The ${label} tab disconnected while "${toolName}" was running, so the result is unknown: the edit may or may not have been applied. ${STATE_CHECK_HINT[scope]}`
+}
+
+/**
+ * `_meta` marker on the "no workspace connected" result, so a client can tell
+ * "open the editor, then retry" apart from every other tool error without
+ * matching message text. The instatic CLI maps it to its own exit code.
+ */
+export const WORKSPACE_NOT_CONNECTED_META = { 'instatic/error': 'workspace_not_connected' } as const
+
+function workspaceNotConnected(scope: EditorBridgeScope): CallToolResult {
+  return {
+    isError: true,
+    content: [{ type: 'text', text: NO_WORKSPACE_MESSAGE[scope] }],
+    _meta: { ...WORKSPACE_NOT_CONNECTED_META },
+  }
+}
+
+/** The editor tab closed before the call reached it and no other tab took over. */
+class WorkspaceNotConnectedError extends Error {
+  readonly scope: EditorBridgeScope
+
+  constructor(scope: EditorBridgeScope, options?: { cause?: unknown }) {
+    super(NO_WORKSPACE_MESSAGE[scope], options)
+    this.name = 'WorkspaceNotConnectedError'
+    this.scope = scope
+  }
+}
+
+function isUndeliveredClosure(err: unknown): boolean {
+  return err instanceof BrowserToolInterruptedError && !err.delivered && err.reason === 'closed'
 }
 
 /**
@@ -149,6 +223,7 @@ export function buildMcpServer(ctx: McpServerContext): Server {
     // actionable error. Browser tools currently belong only to Site or
     // Content; keep that invariant explicit instead of guessing a bridge.
     let bridge = NOOP_BRIDGE
+    let browserScope: EditorBridgeScope | null = null
     if (tool.execution === 'browser') {
       if (tool.scope !== 'site' && tool.scope !== 'content') {
         return project({
@@ -156,31 +231,47 @@ export function buildMcpServer(ctx: McpServerContext): Server {
           content: [{ type: 'text', text: `Browser tool "${tool.name}" has unsupported scope "${tool.scope}".` }],
         })
       }
-      const browserScope: EditorBridgeScope = tool.scope
-      const live = getEditorBridgeForUser(ctx.userId, browserScope)
-      if (!live) {
-        return project({
-          isError: true,
-          content: [{ type: 'text', text: NO_WORKSPACE_MESSAGE[browserScope] }],
-        })
+      const scope: EditorBridgeScope = tool.scope
+      browserScope = scope
+      const signal = requestContext.mcpReq.signal
+      const waitMs = ctx.workspaceWaitMs ?? WORKSPACE_WAIT_MS
+      const connect = () => waitForEditorWorkspace(ctx.userId, scope, { timeoutMs: waitMs, signal })
+
+      const initial = await connect()
+      if (!initial) return project(workspaceNotConnected(scope))
+
+      const run = async (
+        workspace: EditorWorkspace,
+        toolName: string,
+        input: unknown,
+      ): Promise<AiToolOutput> => {
+        if (scope === 'content') {
+          await authorizeMcpContentTool(
+            ctx.db,
+            ctx.userId,
+            ctx.capabilities,
+            toolName,
+            input,
+            { branchId: workspace.branchId },
+          )
+        }
+        return workspace.bridge.callBrowser(toolName, input)
       }
-      bridge = browserScope === 'content'
-        ? {
-            callBrowser: async (toolName, input) => {
-              await authorizeMcpContentTool(
-                ctx.db,
-                ctx.userId,
-                ctx.capabilities,
-                toolName,
-                input,
-                { branchId: getEditorBridgeBranch(ctx.userId, browserScope) ?? MAIN_SCOPE.branchId },
-              )
-              const current = getEditorBridgeForUser(ctx.userId, browserScope)
-              if (!current) throw new Error(NO_WORKSPACE_MESSAGE[browserScope])
-              return current.callBrowser(toolName, input)
-            },
+
+      bridge = {
+        callBrowser: async (toolName, input) => {
+          try {
+            return await run(initial, toolName, input)
+          } catch (err) {
+            // The tab's stream closed before the call was pushed to it, so the
+            // editor never saw it: retry once on whichever tab is live now.
+            if (!isUndeliveredClosure(err)) throw err
+            const next = await connect()
+            if (!next) throw new WorkspaceNotConnectedError(scope, { cause: err })
+            return run(next, toolName, input)
           }
-        : live
+        },
+      }
     } else {
       // Headless reads hit the DB directly, but live co-editing persists on an
       // ~800 ms debounce — flush the relay first so a headless read reflects
@@ -204,17 +295,15 @@ export function buildMcpServer(ctx: McpServerContext): Server {
         snapshot: null,
       })
     } catch (err) {
+      if (err instanceof WorkspaceNotConnectedError) return project(workspaceNotConnected(err.scope))
       // Browser bridge rejection is terminal for a chat turn, but MCP has no
       // surrounding provider loop to terminate. Translate the same transport
       // failure into the protocol's normal tool-error result instead of
       // letting the request handler reject with an internal MCP error.
-      return project({
-        isError: true,
-        content: [{
-          type: 'text',
-          text: getErrorMessage(err, `Browser tool "${tool.name}" could not return a result.`),
-        }],
-      })
+      const text = err instanceof BrowserToolInterruptedError && browserScope
+        ? interruptionMessage(err, tool.name, browserScope)
+        : getErrorMessage(err, `Browser tool "${tool.name}" could not return a result.`)
+      return project({ isError: true, content: [{ type: 'text', text }] })
     }
 
     if (!output.ok) {

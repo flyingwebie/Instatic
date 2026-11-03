@@ -120,7 +120,7 @@ describe('Content collection step-up flow', () => {
     globalThis.fetch = mock(async (input: RequestInfo | URL, init?: RequestInit) => {
       const url = String(input)
 
-      if (url === '/admin/api/ai/editor-bridge?scope=content') {
+      if (url.startsWith('/admin/api/ai/editor-bridge?scope=content&tabId=')) {
         contentBridgeRequests += 1
         return json({ error: 'Unauthorized' }, 401)
       }

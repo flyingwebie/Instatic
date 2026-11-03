@@ -33,6 +33,7 @@ docs/
 │   ├── dashboard.md                ← Dashboard workspace + widget registry
 │   ├── spotlight.md                ← Cmd+K command palette
 │   ├── agent.md                    ← AI agent integration
+│   ├── cli.md                      ← the `instatic` npm CLI (terminal + agent client)
 │   ├── templates.md                ← entry templates + dynamic bindings
 │   ├── loops.md                    ← base.loop + loop sources
 │   ├── cms-native-forms.md         ← visual form primitives + data_rows submissions
@@ -153,6 +154,7 @@ Three categories, three voices:
 | [features/god-mode.md](features/god-mode.md)                     | God Mode: Code Dock (HTML \| CSS \| JS) replacing the properties sidebar |
 | [features/agent.md](features/agent.md)                           | AI agent integration and provider-agnostic runtime                   |
 | [features/mcp-connectors.md](features/mcp-connectors.md)         | Instatic as an MCP server — external AI clients drive the CMS over MCP |
+| [features/cli.md](features/cli.md)                               | The `instatic` CLI: terminal and AI-agent client for a site, plus a local stdio MCP proxy |
 | [features/templates.md](features/templates.md)                   | Entry templates + dynamic bindings + token interpolation             |
 | [features/loops.md](features/loops.md)                           | `base.loop` + loop entity sources                                    |
 | [features/cms-native-forms.md](features/cms-native-forms.md)     | Visual form primitives and secure public submissions                 |

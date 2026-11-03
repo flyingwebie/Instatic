@@ -12,6 +12,7 @@ import { createOAuthAuthorizationGrant, findOAuthClient } from '../oauth/store'
 import { OAUTH_GRANT_TTL_DAYS } from '../connectors/store'
 import {
   isValidPkceChallenge,
+  mcpIssuer,
   mcpIssuerUnavailableResponse,
   mcpResource,
   normalizeMcpScope,
@@ -65,6 +66,7 @@ async function handleDecision(req: Request, db: DbClient): Promise<Response> {
         error: 'access_denied',
         error_description: 'The resource owner denied the request.',
         state: body.request.state,
+        iss: mcpIssuer(req) ?? undefined,
       }),
     })
   }
@@ -111,6 +113,9 @@ async function handleDecision(req: Request, db: DbClient): Promise<Response> {
       redirectUrl: oauthRedirect(resolved.request.redirectUri, {
         code,
         state: resolved.request.state,
+        // RFC 9207: name the issuer so a client signed in to several sites
+        // can tell which one answered (authorization-server mix-up defence).
+        iss: mcpIssuer(req) ?? undefined,
       }),
     })
   } catch (err) {

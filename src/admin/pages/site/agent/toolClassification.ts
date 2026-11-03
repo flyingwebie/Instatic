@@ -59,5 +59,6 @@ export const SITE_MUTATION_TOOLS: ReadonlySet<string> = new Set([
   'site_set_type_scale',
   'site_set_spacing_scale',
   'site_write_code_asset',
+  'site_write_page_script',
   'site_patch_code_asset',
 ])

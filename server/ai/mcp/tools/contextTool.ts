@@ -51,7 +51,7 @@ export const contextMcpTools: AiTool[] = [
   {
     name: 'get_context',
     description:
-      'Orient yourself before editing: reports whether the Site editor and Content workspace are connected (browser tools require their matching workspace), and which templates wrap pages — an "everywhere" template applies a nav/footer/etc. to every page, so anything you author is in addition to it. Pass entryId to also learn whether a template wraps that specific page. Headless — no editor needed. Call this first if a browser tool returns an "open the workspace" error.',
+      'Orient yourself before editing: reports whether the Site editor and Content workspace are connected (browser tools require their matching workspace), and which templates wrap pages — an "everywhere" template applies a nav/footer/etc. to every page, so anything you author is in addition to it. Pass entryId to also learn whether a template wraps that specific page. Headless — no editor needed. Browser tools wait up to 15 seconds for the matching workspace to (re)connect; if this reports it disconnected, ask the user to open it rather than retrying in a loop.',
     scope: 'site',
     execution: 'server',
     inputSchema: GetContextInput,

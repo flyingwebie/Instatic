@@ -226,6 +226,7 @@ describe('runMcpWorkspaceBridgeConnection', () => {
         async () => ({ ok: true }),
         undefined,
         lifecycleController.signal,
+        'tab-1',
       )).rejects.toThrow('The editor bridge no longer owns this request.')
 
       expect(lifecycleController.signal.aborted).toBe(false)
@@ -236,6 +237,7 @@ describe('runMcpWorkspaceBridgeConnection', () => {
         async () => ({ ok: true }),
         undefined,
         lifecycleController.signal,
+        'tab-1',
       )).resolves.toBe('auth')
       expect(connectionSignals[1]?.aborted).toBe(true)
       expect(requestCount).toBe(3)

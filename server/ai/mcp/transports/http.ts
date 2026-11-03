@@ -33,6 +33,8 @@ interface McpHttpOptions {
   uploadsDir?: string
   /** Test seam; production uses the hard endpoint-wide limit above. */
   maxRequestBytes?: number
+  /** Test seam; production waits the server default for an editor tab. */
+  workspaceWaitMs?: number
 }
 
 function payloadTooLargeResponse(maxBytes: number): Response {
@@ -74,6 +76,7 @@ export async function handleMcpHttp(
       connectorId: auth.connectorId,
       capabilities: auth.capabilities,
       uploadsDir: options.uploadsDir,
+      ...(options.workspaceWaitMs !== undefined ? { workspaceWaitMs: options.workspaceWaitMs } : {}),
     }),
     {
       legacy: 'stateless',

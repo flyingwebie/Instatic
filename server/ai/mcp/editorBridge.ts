@@ -7,13 +7,21 @@
  * the editor holds a long-lived newline-delimited JSON stream open while
  * mounted. Its HTTP response is advertised as an event stream so reverse
  * proxies preserve incremental delivery. This module keeps one bridge per user
- * and workspace (the newest open instance wins) and lets the MCP server relay a
+ * and workspace and lets the MCP server relay a
  * browser tool call to the correct workspace before awaiting its result.
  *
  * Reuses the chat bridge machinery wholesale: `createBridge` issues the
  * `AiBrowserBridge` (whose `callBrowser` resolves when the editor POSTs back to
  * the existing `/admin/api/ai/tool-result`), and `encodeStreamEvent` frames the
  * NDJSON the editor reads with `readNdjsonStream`.
+ *
+ * Several tabs may hold a stream for the same workspace. Each tab sends a
+ * stable `tabId` and keeps its claim across reconnects: tool calls route to
+ * the most recently *opened* tab, and a tab merely reconnecting after an idle
+ * recycle never steals the workspace back. Superseded tabs stay connected (so
+ * in-flight calls finish) and take over automatically when the active tab
+ * closes. Callers that land in a reconnect gap wait briefly
+ * (`waitForEditorWorkspace`) instead of failing at once.
  *
  * Security: the registry is keyed by `userId` + workspace scope, so an MCP
  * connector can only ever reach the open workspace of its OWN owner and a
@@ -23,15 +31,29 @@ import { MAIN_BRANCH_ID } from '@core/branches'
 import type { AiBrowserBridge, AiStreamEvent } from '../runtime/types'
 import { createBridge, encodeStreamEvent } from '../runtime'
 
-interface EditorBridgeEntry {
-  bridgeId: string
+export type EditorBridgeScope = 'site' | 'content'
+
+/** The live workspace a browser tool is relayed to. */
+export interface EditorWorkspace {
   bridge: AiBrowserBridge
   /** The branch the connected workspace has open; browser tools act in it. */
   branchId: string
-  destroy: () => void
 }
 
-export type EditorBridgeScope = 'site' | 'content'
+interface WorkspaceConnection extends EditorWorkspace {
+  bridgeId: string
+  tabId: string
+  /** Claim order: the highest claim among live connections is active. */
+  claim: number
+  close: () => void
+}
+
+interface TabClaim {
+  claim: number
+  /** When the tab's last connection closed; null while one is live. */
+  releasedAt: number | null
+}
+
 /**
  * How long a stream may sit with NO tool traffic before the server drops it.
  * This is an IDLE lease: every relayed tool request re-arms it, so an active
@@ -43,23 +65,119 @@ export type EditorBridgeScope = 'site' | 'content'
  */
 const STREAM_IDLE_LEASE_MS = 120_000
 
-const byUser = new Map<string, Map<EditorBridgeScope, EditorBridgeEntry>>()
+/**
+ * How long a disconnected tab keeps its claim. Long enough to cover any
+ * reconnect (idle recycle, deploy, laptop sleep) so the tab resumes its place
+ * instead of jumping ahead of a tab opened after it.
+ */
+const TAB_CLAIM_MEMORY_MS = 10 * 60_000
 
-/** The live workspace bridge for a user and scope, or null when disconnected. */
-export function getEditorBridgeForUser(
-  userId: string,
-  scope: EditorBridgeScope,
-): AiBrowserBridge | null {
-  return byUser.get(userId)?.get(scope)?.bridge ?? null
+const connections = new Map<string, Map<string, WorkspaceConnection>>()
+const claims = new Map<string, Map<string, TabClaim>>()
+const waiters = new Map<string, Set<() => void>>()
+let claimSequence = 0
+
+function workspaceKey(userId: string, scope: EditorBridgeScope): string {
+  return `${scope}\u0000${userId}`
+}
+
+function activeConnection(key: string): WorkspaceConnection | null {
+  let active: WorkspaceConnection | null = null
+  for (const connection of connections.get(key)?.values() ?? []) {
+    // `>=`: on a tie (one tab, two streams) the later registration wins.
+    if (!active || connection.claim >= active.claim) active = connection
+  }
+  return active
+}
+
+/** The live workspace for a user and scope, or null when none is connected. */
+export function getEditorWorkspace(userId: string, scope: EditorBridgeScope): EditorWorkspace | null {
+  const active = activeConnection(workspaceKey(userId, scope))
+  return active ? { bridge: active.bridge, branchId: active.branchId } : null
 }
 
 export function hasEditorBridge(userId: string, scope: EditorBridgeScope): boolean {
-  return byUser.get(userId)?.has(scope) ?? false
+  return activeConnection(workspaceKey(userId, scope)) !== null
 }
 
-/** The branch the user's live workspace has open, or null when disconnected. */
-export function getEditorBridgeBranch(userId: string, scope: EditorBridgeScope): string | null {
-  return byUser.get(userId)?.get(scope)?.branchId ?? null
+/**
+ * The live workspace, waiting up to `timeoutMs` for one to connect. Covers
+ * the routine gaps in a workspace's stream (idle recycle, a reconnect after a
+ * network blip or server restart) so a tool call landing in one does not fail.
+ */
+export function waitForEditorWorkspace(
+  userId: string,
+  scope: EditorBridgeScope,
+  options: { timeoutMs: number; signal?: AbortSignal },
+): Promise<EditorWorkspace | null> {
+  const ready = getEditorWorkspace(userId, scope)
+  if (ready || options.timeoutMs <= 0 || options.signal?.aborted) return Promise.resolve(ready)
+
+  const key = workspaceKey(userId, scope)
+  return new Promise((resolve) => {
+    const set = waiters.get(key) ?? new Set<() => void>()
+    waiters.set(key, set)
+    const finish = (): void => {
+      clearTimeout(timer)
+      options.signal?.removeEventListener('abort', finish)
+      set.delete(finish)
+      if (set.size === 0) waiters.delete(key)
+      resolve(getEditorWorkspace(userId, scope))
+    }
+    const timer = setTimeout(finish, options.timeoutMs)
+    options.signal?.addEventListener('abort', finish, { once: true })
+    set.add(finish)
+  })
+}
+
+function notifyWaiters(key: string): void {
+  for (const finish of [...(waiters.get(key) ?? [])]) finish()
+}
+
+function pruneClaims(key: string, now: number): void {
+  const tabClaims = claims.get(key)
+  if (!tabClaims) return
+  for (const [tabId, claim] of tabClaims) {
+    if (claim.releasedAt !== null && now - claim.releasedAt > TAB_CLAIM_MEMORY_MS) tabClaims.delete(tabId)
+  }
+  if (tabClaims.size === 0) claims.delete(key)
+}
+
+function register(key: string, connection: Omit<WorkspaceConnection, 'claim'>): WorkspaceConnection {
+  const now = Date.now()
+  pruneClaims(key, now)
+
+  // A tab runs one stream at a time, so an older stream from the same tab is
+  // one the browser already abandoned. Close it rather than leave it as a
+  // routing candidate. (Closing unregisters it, which may drop the key's map,
+  // so the map is looked up only afterwards.)
+  for (const other of [...(connections.get(key)?.values() ?? [])]) {
+    if (other.tabId === connection.tabId) other.close()
+  }
+  const live = connections.get(key) ?? new Map<string, WorkspaceConnection>()
+  connections.set(key, live)
+
+  const tabClaims = claims.get(key) ?? new Map<string, TabClaim>()
+  claims.set(key, tabClaims)
+  const existing = tabClaims.get(connection.tabId)
+  const claim = existing?.claim ?? ++claimSequence
+  tabClaims.set(connection.tabId, { claim, releasedAt: null })
+
+  const entry: WorkspaceConnection = { ...connection, claim }
+  live.set(entry.bridgeId, entry)
+  notifyWaiters(key)
+  return entry
+}
+
+function unregister(key: string, bridgeId: string): void {
+  const live = connections.get(key)
+  const entry = live?.get(bridgeId)
+  if (!live || !entry) return
+  live.delete(bridgeId)
+  if (live.size === 0) connections.delete(key)
+  const tabStillLive = [...live.values()].some((other) => other.tabId === entry.tabId)
+  const tabClaim = claims.get(key)?.get(entry.tabId)
+  if (tabClaim && !tabStillLive) tabClaim.releasedAt = Date.now()
 }
 
 /**
@@ -74,11 +192,17 @@ export function createEditorBridgeStream(
   options: {
     /** The branch the workspace has open (its `X-Instatic-Branch`); main when absent. */
     branchId?: string
+    /**
+     * Stable id of the browser tab across its reconnects. Absent (older
+     * clients, tests) → each stream counts as a newly opened tab.
+     */
+    tabId?: string
     /** Test seam: the idle lease shrinks to milliseconds in unit tests. */
     idleLeaseMs?: number
   } = {},
 ): ReadableStream<Uint8Array> {
   const { branchId = MAIN_BRANCH_ID, idleLeaseMs = STREAM_IDLE_LEASE_MS } = options
+  const key = workspaceKey(userId, scope)
   let closeStream: (() => void) | null = null
 
   return new ReadableStream<Uint8Array>({
@@ -99,14 +223,7 @@ export function createEditorBridgeStream(
         if (lease) clearTimeout(lease)
         signal.removeEventListener('abort', cleanup)
         destroyBridge()
-
-        // Only evict if we're still the current bridge for this scope. Keep
-        // the user's other workspace registered until its own stream closes.
-        const liveUserBridges = byUser.get(userId)
-        if (liveUserBridges?.get(scope)?.bridgeId === bridgeId) {
-          liveUserBridges.delete(scope)
-          if (liveUserBridges.size === 0) byUser.delete(userId)
-        }
+        unregister(key, bridgeId)
         try {
           controller.close()
         } catch {
@@ -149,13 +266,13 @@ export function createEditorBridgeStream(
       destroyBridge = created.destroy
       pendingCount = created.pendingCount
 
-      // Newest instance of this workspace wins. The user's other workspace
-      // remains connected, so Site and Content may serve MCP simultaneously.
-      const userBridges = byUser.get(userId) ?? new Map<EditorBridgeScope, EditorBridgeEntry>()
-      const previous = userBridges.get(scope)
-      if (previous) previous.destroy()
-      userBridges.set(scope, { bridgeId, bridge: created.bridge, branchId, destroy: destroyBridge })
-      byUser.set(userId, userBridges)
+      register(key, {
+        bridgeId,
+        tabId: options.tabId ?? bridgeId,
+        bridge: created.bridge,
+        branchId,
+        close: cleanup,
+      })
 
       emit({ type: 'bridgeReady', bridgeId })
 

@@ -3,6 +3,7 @@
  */
 
 export {
+  BrowserToolInterruptedError,
   createBridge,
   encodeStreamEvent,
   resolveBridgeToolResult,
