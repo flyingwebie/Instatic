@@ -2,7 +2,7 @@
 
 > Unofficial: published from this fork, not by the Instatic project. The npm README (`packages/cli/README.md`) says so at the top, and so does `instatic --help`.
 
-A command-line client for an Instatic site, published to npm as `instatic` and run with `npx instatic` or `bunx instatic`. It lets a person in a terminal, or an AI agent that works through a shell, use the same tools MCP clients get: inspect the site, run editing tools in the open editor, upload media, and publish. `instatic mcp` also runs it as a local stdio MCP server for desktop clients.
+A command-line client for an Instatic site, published to npm as `@flyingwebie/instatic` (npm refuses the unscoped `instatic` as too close to the existing `ecstatic` package) and run with `npx @flyingwebie/instatic` or `bunx @flyingwebie/instatic`; a global install (`npm install -g @flyingwebie/instatic`) provides the plain `instatic` command. It lets a person in a terminal, or an AI agent that works through a shell, use the same tools MCP clients get: inspect the site, run editing tools in the open editor, upload media, and publish. `instatic mcp` also runs it as a local stdio MCP server for desktop clients.
 
 The CLI is a thin client of the [MCP endpoint](mcp-connectors.md). It holds no editing logic and no second protocol: every command is an authenticated MCP request to `/_instatic/mcp`, so capability checks, the editor bridge, and drafts-until-publish all behave exactly as they do for any MCP client. Anything an agent needs that the tools cannot do belongs in a new MCP tool on the server, so every client gets it, not in CLI-only logic.
 
@@ -95,7 +95,7 @@ The server rotates refresh tokens and treats a reused one as stolen, revoking th
 
 ```text
 packages/cli/
-  package.json        name "instatic", bin "instatic" → dist/instatic.js, Node >= 20
+  package.json        name "@flyingwebie/instatic", bin "instatic" → dist/instatic.js, Node >= 20
   tsconfig.json       own strict project, referenced from the root tsconfig (tsc -b)
   README.md           npm package page
   src/index.ts        executable: wires process streams, hidden token prompt, browser opener

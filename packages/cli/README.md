@@ -5,9 +5,11 @@
 Command-line client for Instatic sites. Drive the visual editor, upload media, and publish from a terminal, or let an AI agent do it.
 
 ```sh
-npx instatic login --url https://your-site.com
-# or: bunx instatic login --url https://your-site.com
+npx @flyingwebie/instatic login --url https://your-site.com
+# or: bunx @flyingwebie/instatic login --url https://your-site.com
 ```
+
+To get a plain `instatic` command, install it globally: `npm install -g @flyingwebie/instatic`. The examples below assume that; with `npx`, write `npx @flyingwebie/instatic …` instead of `instatic …`.
 
 `login` opens your browser on the site's consent page. Approve access there; you need to be an Instatic admin. The CLI keeps the sign-in fresh by itself for 90 days. Browser sign-in needs `PUBLIC_ORIGIN` set on the server.
 
@@ -72,7 +74,7 @@ Every tool runs through `instatic call <tool>` or `instatic batch`. `publish` an
   "mcpServers": {
     "instatic": {
       "command": "npx",
-      "args": ["-y", "instatic", "mcp"]
+      "args": ["-y", "@flyingwebie/instatic", "mcp"]
     }
   }
 }

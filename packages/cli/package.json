@@ -1,5 +1,5 @@
 {
-  "name": "instatic",
+  "name": "@flyingwebie/instatic",
   "version": "0.1.0",
   "description": "Unofficial command-line client for Instatic sites: drive the visual editor, publish, and upload media from a terminal or an AI agent. Not affiliated with the Instatic project.",
   "license": "MIT",
