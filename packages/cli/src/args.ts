@@ -9,7 +9,7 @@ export interface ParsedArgs {
   flags: Map<string, string | true>
 }
 
-const BOOLEAN_FLAGS = new Set(['json', 'help', 'version', 'token-stdin', 'all'])
+const BOOLEAN_FLAGS = new Set(['json', 'help', 'version', 'with-token', 'no-browser', 'schemas', 'keep-going'])
 
 export function parseArgs(argv: readonly string[]): ParsedArgs {
   const positionals: string[] = []

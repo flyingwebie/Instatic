@@ -5,7 +5,8 @@
  * production ones.
  */
 import { afterEach, beforeEach, describe, expect, it } from 'bun:test'
-import { mkdtemp, readFile, rm, stat } from 'node:fs/promises'
+import { mkdtemp, readFile, rm, stat, writeFile } from 'node:fs/promises'
+import { get as httpGet } from 'node:http'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import { Client, InMemoryTransport } from '@modelcontextprotocol/client'
@@ -14,11 +15,14 @@ import { sqliteMigrations } from '../../../server/db/migrations-sqlite'
 import { runMigrations } from '../../../server/db/runMigrations'
 import type { DbClient } from '../../../server/db/client'
 import { handleMcpHttp } from '../../../server/ai/mcp'
+import { tryHandleMcpOAuth } from '../../../server/ai/mcp/oauth/handler'
+import { createOAuthAuthorizationGrant } from '../../../server/ai/mcp/oauth/store'
+import { parseOAuthAuthorizationRequest } from '../../../server/ai/mcp/oauth/schemas'
 import { createBearerConnection } from '../../../server/ai/mcp/connectors/store'
 import { generatePersonalAccessToken, hashMcpSecret } from '../../../server/ai/mcp/connectors/token'
 import { createEditorBridgeStream } from '../../../server/ai/mcp/editorBridge'
 import { resolveBridgeToolResult } from '../../../server/ai/runtime'
-import { EXIT, runCli, type CliIo } from './cli'
+import { EXIT, parseBatch, runCli, type CliIo } from './cli'
 import { classifyFailure } from './connection'
 import { createProxyServer } from './stdioProxy'
 
@@ -41,7 +45,7 @@ beforeEach(async () => {
   await createBearerConnection(db, {
     userId,
     label: 'CLI test',
-    capabilities: ['ai.chat', 'ai.tools.write', 'site.read', 'site.structure.edit', 'content.manage', 'pages.edit'],
+    capabilities: [...CAPABILITIES],
     tokenHash: await hashMcpSecret(token),
   })
   configDir = await mkdtemp(join(tmpdir(), 'instatic-cli-'))
@@ -51,9 +55,59 @@ afterEach(async () => {
   await rm(configDir, { recursive: true, force: true })
 })
 
+const CAPABILITIES = ['ai.chat', 'ai.tools.write', 'site.read', 'site.structure.edit', 'content.manage', 'pages.edit'] as const
+
+/** The site's MCP endpoint and OAuth surface, in-process. */
 const handlerFetch = async (input: string | URL | Request, init?: RequestInit): Promise<Response> => {
-  const res = await handleMcpHttp(new Request(input, init), db)
+  const req = new Request(input, init)
+  const oauth = await tryHandleMcpOAuth(req, db, new URL(req.url).pathname)
+  if (oauth) return oauth
+  const res = await handleMcpHttp(req, db, { workspaceWaitMs: 20 })
   return res ?? new Response(null, { status: 404 })
+}
+
+/**
+ * Play the user in the browser: approve the consent request the CLI opened
+ * (as the admin consent page would) and follow the redirect to the CLI's
+ * loopback callback.
+ */
+async function approveInBrowser(url: string): Promise<boolean> {
+  const request = parseOAuthAuthorizationRequest(new URL(url).searchParams)
+  if (!request) throw new Error(`not an authorization URL: ${url}`)
+  const { code } = await createOAuthAuthorizationGrant(db, {
+    userId,
+    clientName: 'instatic CLI',
+    capabilities: [...CAPABILITIES],
+    request,
+  })
+  // A callback that is not ours (wrong state) is refused and does not end the wait.
+  expect(await browserGet(`${request.redirectUri}?code=forged&state=wrong`)).toBe(400)
+  const callback = new URL(request.redirectUri)
+  callback.searchParams.set('code', code)
+  callback.searchParams.set('state', request.state ?? '')
+  callback.searchParams.set('iss', SITE)
+  expect(await browserGet(callback.href)).toBe(200)
+  return true
+}
+
+/** GET a loopback URL like a browser following a redirect (the test preload's fetch enforces CORS). */
+function browserGet(url: string): Promise<number> {
+  return new Promise((resolve, reject) => {
+    httpGet(url, (res) => {
+      res.resume()
+      resolve(res.statusCode ?? 0)
+    }).on('error', reject)
+  })
+}
+
+async function readSavedConfig() {
+  return JSON.parse(await readFile(join(configDir, 'config.json'), 'utf8'))
+}
+
+async function editSavedOAuth(change: (oauth: Record<string, unknown>) => void) {
+  const config = await readSavedConfig()
+  change(config.profiles.default.oauth)
+  await writeFile(join(configDir, 'config.json'), JSON.stringify(config))
 }
 
 async function run(argv: string[], overrides: Partial<CliIo> = {}) {
@@ -250,9 +304,123 @@ describe('instatic CLI', () => {
     expect((await run(['profiles', '--json'])).stdout).not.toContain('staging')
   })
 
+  it('signs in through the browser and saves an OAuth profile', async () => {
+    let log = ''
+    const result = await run(['login', '--url', SITE], {
+      openBrowser: approveInBrowser,
+      stderr: (text) => { log += text },
+    })
+    expect(result.code).toBe(EXIT.ok)
+    expect(result.stdout).toContain('(browser sign-in)')
+    expect(log).toContain('Opened your browser')
+
+    const saved = await readSavedConfig()
+    expect(saved.current).toBe('default')
+    expect(saved.profiles.default.url).toBe(SITE)
+    expect(saved.profiles.default.oauth).toMatchObject({
+      resource: `${SITE}/_instatic/mcp`,
+      accessToken: expect.stringMatching(/^imcp_at_/),
+      refreshToken: expect.any(String),
+    })
+    expect(JSON.stringify(saved)).not.toContain('imcp_pat_')
+    expect((await run(['profiles'])).stdout).toContain('(oauth)')
+    expect((await run(['call', 'get_context', '{}'])).code).toBe(EXIT.ok)
+  })
+
+  it('refreshes an expiring sign-in, once, even with parallel commands', async () => {
+    expect((await run(['login', '--url', SITE], { openBrowser: approveInBrowser })).code).toBe(EXIT.ok)
+    const before = (await readSavedConfig()).profiles.default.oauth
+    await editSavedOAuth((oauth) => { oauth.expiresAt = 0 })
+
+    // Five processes find the token expired at the same moment. Only one may
+    // refresh: a second refresh would reuse a rotated token, which the server
+    // treats as theft and answers by revoking the sign-in.
+    const results = await Promise.all(Array.from({ length: 5 }, () => run(['call', 'get_context', '{}'])))
+    expect(results.map((r) => r.code)).toEqual([0, 0, 0, 0, 0])
+
+    const after = (await readSavedConfig()).profiles.default.oauth
+    expect(after.accessToken).not.toBe(before.accessToken)
+    expect(after.refreshToken).not.toBe(before.refreshToken)
+    expect(after.expiresAt).toBeGreaterThan(Date.now())
+    expect((await run(['status'])).code).toBe(EXIT.ok)
+  })
+
+  it('renews after the server rejects a not-yet-expired access token', async () => {
+    expect((await run(['login', '--url', SITE], { openBrowser: approveInBrowser })).code).toBe(EXIT.ok)
+    await editSavedOAuth((oauth) => { oauth.accessToken = 'imcp_at_revoked' })
+    const result = await run(['call', 'get_context', '{}'])
+    expect(result.code).toBe(EXIT.ok)
+    expect((await readSavedConfig()).profiles.default.oauth.accessToken).not.toBe('imcp_at_revoked')
+  })
+
+  it('asks to log in again once the sign-in is revoked', async () => {
+    expect((await run(['login', '--url', SITE], { openBrowser: approveInBrowser })).code).toBe(EXIT.ok)
+    await db`update ai_mcp_connectors set revoked_at = ${new Date().toISOString()}`
+    await editSavedOAuth((oauth) => { oauth.expiresAt = 0 })
+    const result = await run(['call', 'get_context', '{}'])
+    expect(result.code).toBe(EXIT.auth)
+    expect(result.stderr).toContain('instatic login')
+  })
+
+  it('logs in with an access token from stdin', async () => {
+    const result = await run(['login', '--url', SITE, '--with-token'], { readStdin: async () => `${token}\n` })
+    expect(result.code).toBe(EXIT.ok)
+    expect(result.stdout).toContain('(access token)')
+    expect((await readSavedConfig()).profiles.default).toEqual({ url: SITE, token })
+  })
+
+  it('never sends a profile\'s credentials to a different --url', async () => {
+    await login()
+    const result = await run(['status', '--url', 'https://other.example'])
+    expect(result.code).toBe(EXIT.usage)
+    expect(result.stderr).toContain('is for http://localhost')
+  })
+
+  it('runs a batch over one connection and stops at the first failure', async () => {
+    await login()
+    const batch = [
+      JSON.stringify({ tool: 'get_context', args: {} }),
+      JSON.stringify({ tool: 'not_a_tool' }),
+      JSON.stringify({ tool: 'get_context' }),
+    ].join('\n')
+    const result = await run(['batch', '-'], { readStdin: async () => batch })
+    expect(result.code).toBe(EXIT.toolError)
+    const lines = result.stdout.trim().split('\n').map((line) => JSON.parse(line))
+    expect(lines).toHaveLength(2)
+    expect(lines[0]).toMatchObject({ index: 0, tool: 'get_context', ok: true })
+    expect(lines[0].result).toHaveProperty('editor')
+    expect(lines[1]).toMatchObject({ index: 1, ok: false, editorNotOpen: false })
+
+    const all = await run(['batch', '-', '--keep-going'], { readStdin: async () => batch })
+    expect(all.stdout.trim().split('\n')).toHaveLength(3)
+    expect(parseBatch('[{"tool":"a"}]')).toEqual([{ tool: 'a', args: {} }])
+    expect(() => parseBatch('{"args":{}}')).toThrow(/tool/)
+  })
+
+  it('exits 5 when a tool needs the editor and none is open', async () => {
+    await login()
+    const result = await run(['call', 'site_write_page_script', '{"content":"1"}'])
+    expect(result.code).toBe(EXIT.editorMissing)
+    expect(result.stderr).toContain('Site editor')
+
+    const batch = await run(['batch', '-'], {
+      readStdin: async () => JSON.stringify([{ tool: 'site_write_page_script', args: { content: '1' } }]),
+    })
+    expect(batch.code).toBe(EXIT.editorMissing)
+    expect(JSON.parse(batch.stdout)).toMatchObject({ ok: false, editorNotOpen: true })
+  })
+
+  it('prints help for one command', async () => {
+    const help = await run(['batch', '--help'])
+    expect(help.code).toBe(EXIT.ok)
+    expect(help.stdout).toContain('--keep-going')
+    expect((await run(['help', 'login'])).stdout).toContain('--with-token')
+    expect((await run(['--help'])).stdout).toContain('Unofficial')
+  })
+
   it('serves the site over a local MCP proxy with the site\'s own instructions and tools', async () => {
     const { server, close } = await createProxyServer(
-      { url: SITE, token, profile: null },
+      { url: SITE, auth: { kind: 'token', token }, profile: null },
       { clientVersion: 'test', fetch: handlerFetch, log: () => {} },
     )
     const [clientTransport, serverTransport] = InMemoryTransport.createLinkedPair()

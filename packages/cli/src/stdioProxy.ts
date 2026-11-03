@@ -13,7 +13,8 @@ import { Server, type CallToolResult } from '@modelcontextprotocol/server'
 import { StdioServerTransport } from '@modelcontextprotocol/server/stdio'
 import type { FetchLike } from '@modelcontextprotocol/client'
 import type { ResolvedConnection } from './config'
-import { ConnectionError, InstaticSession } from './connection'
+import { InstaticSession } from './connection'
+import { ConnectionError } from './errors'
 
 export interface ProxyOptions {
   clientVersion: string
@@ -92,7 +93,11 @@ export async function createProxyServer(
       const session = await remote.get()
       const result = await session.callTool(name, args ?? {})
       return server.projectCallToolResult(
-        { isError: result.isError, content: result.content as CallToolResult['content'] },
+        {
+          isError: result.isError,
+          content: result.content as CallToolResult['content'],
+          ...(result._meta ? { _meta: result._meta } : {}),
+        },
         undefined,
       )
     } catch (err) {

@@ -23,24 +23,14 @@ import {
   type Tool,
 } from '@modelcontextprotocol/client'
 import { mcpEndpoint, type ResolvedConnection } from './config'
+import { createCredentials, type Credentials } from './credentials'
+import { ConnectionError } from './errors'
 
 const PROTOCOL_VERSION = '2026-07-28'
 /** Above the server's 15 s workspace wait + 90 s per-call editor limit. */
-const TOOL_CALL_TIMEOUT_MS = 150_000
+export const TOOL_CALL_TIMEOUT_MS = 150_000
 const READ_TIMEOUT_MS = 30_000
 const RETRY_DELAYS_MS = [500, 1500]
-
-export type FailureKind = 'auth' | 'unreachable' | 'server'
-
-export class ConnectionError extends Error {
-  readonly kind: FailureKind
-
-  constructor(kind: FailureKind, message: string, options?: { cause?: unknown }) {
-    super(message, options)
-    this.name = 'ConnectionError'
-    this.kind = kind
-  }
-}
 
 /** Codes meaning the TCP connection was never established — nothing was sent. */
 const NEVER_SENT_CODES = new Set(['ECONNREFUSED', 'ConnectionRefused', 'ENOTFOUND', 'EAI_AGAIN', 'UND_ERR_CONNECT_TIMEOUT'])
@@ -104,15 +94,17 @@ function neverSent(err: unknown): boolean {
 }
 
 /** Turn any SDK / network failure into a `ConnectionError` with a next step. */
-export function classifyFailure(err: unknown, siteUrl: string): ConnectionError {
-  if (err instanceof ConnectionError) return err
+export function classifyFailure(
+  err: unknown,
+  siteUrl: string,
+  rejectedMessage = `${siteUrl} rejected the access token. Run instatic login.`,
+): ConnectionError {
+  // Credentials raise their own classified errors from inside the SDK's fetch.
+  const classified = errorChain(err).find((link) => link instanceof ConnectionError)
+  if (classified) return classified as ConnectionError
   const status = httpStatus(err)
   if (err instanceof UnauthorizedError || status === 401 || status === 403) {
-    return new ConnectionError(
-      'auth',
-      `${siteUrl} rejected the access token. It may be expired or revoked: create a new one in Instatic under AI → MCP, then run instatic login.`,
-      { cause: err },
-    )
+    return new ConnectionError('auth', rejectedMessage, { cause: err })
   }
   if ((status !== null && GATEWAY_STATUSES.has(status)) || isNetworkFailure(err)) {
     return new ConnectionError(
@@ -142,6 +134,32 @@ async function withRetry<T>(run: () => Promise<T>, retryable: (err: unknown) => 
 export interface ToolCallResult {
   isError: boolean
   content: Array<{ type: string; text?: string; data?: string; mimeType?: string }>
+  /** The tool needs the Site editor / Content workspace and none was open. */
+  workspaceNotConnected: boolean
+  _meta?: Record<string, unknown>
+}
+
+/** Server marker on "no workspace connected" results (server/ai/mcp/server.ts). */
+const WORKSPACE_NOT_CONNECTED = 'workspace_not_connected'
+
+/**
+ * `fetch` that sends the current bearer token, and after a 401 renews the
+ * credentials once and re-sends. A 401 means the server refused the request
+ * before running anything, so re-sending is always safe.
+ */
+function authorizedFetch(base: FetchLike, credentials: Credentials): FetchLike {
+  return async (input, init) => {
+    const send = (token: string) => {
+      const headers = new Headers(init?.headers)
+      headers.set('Authorization', `Bearer ${token}`)
+      return base(input, { ...init, headers })
+    }
+    const token = await credentials.bearer()
+    const response = await send(token)
+    if (response.status !== 401 || !(await credentials.renew(token))) return response
+    await response.body?.cancel().catch(() => {})
+    return send(await credentials.bearer())
+  }
 }
 
 export interface SessionOptions {
@@ -153,23 +171,25 @@ export interface SessionOptions {
 export class InstaticSession {
   readonly siteUrl: string
   private readonly client: Client
+  private readonly rejectedMessage: string
 
-  private constructor(siteUrl: string, client: Client) {
+  private constructor(siteUrl: string, client: Client, rejectedMessage: string) {
     this.siteUrl = siteUrl
     this.client = client
+    this.rejectedMessage = rejectedMessage
   }
 
   static async open(connection: ResolvedConnection, options: SessionOptions): Promise<InstaticSession> {
+    const credentials = createCredentials(connection.auth, { fetch: options.fetch })
+    const rejectedMessage = credentials.rejectedMessage(connection.url)
+    const fetchFn = authorizedFetch(options.fetch ?? fetch, credentials)
     // A transport starts once, so every attempt builds a fresh client.
     const attempt = async (): Promise<Client> => {
       const client = new Client(
         { name: 'instatic-cli', version: options.clientVersion },
         { versionNegotiation: { mode: { pin: PROTOCOL_VERSION } } },
       )
-      const transport = new StreamableHTTPClientTransport(mcpEndpoint(connection.url), {
-        requestInit: { headers: { Authorization: `Bearer ${connection.token}` } },
-        fetch: options.fetch,
-      })
+      const transport = new StreamableHTTPClientTransport(mcpEndpoint(connection.url), { fetch: fetchFn })
       try {
         await client.connect(transport, { timeout: READ_TIMEOUT_MS })
         return client
@@ -179,9 +199,9 @@ export class InstaticSession {
       }
     }
     try {
-      return new InstaticSession(connection.url, await withRetry(attempt, isTransient))
+      return new InstaticSession(connection.url, await withRetry(attempt, isTransient), rejectedMessage)
     } catch (err) {
-      throw classifyFailure(err, connection.url)
+      throw classifyFailure(err, connection.url, rejectedMessage)
     }
   }
 
@@ -202,20 +222,35 @@ export class InstaticSession {
       )
       return tools
     } catch (err) {
-      throw classifyFailure(err, this.siteUrl)
+      throw classifyFailure(err, this.siteUrl, this.rejectedMessage)
     }
   }
 
-  async callTool(name: string, args: Record<string, unknown>): Promise<ToolCallResult> {
+  async callTool(
+    name: string,
+    args: Record<string, unknown>,
+    options: { timeoutMs?: number } = {},
+  ): Promise<ToolCallResult> {
     try {
       const result = await withRetry(
-        () => this.client.callTool({ name, arguments: args }, { timeout: TOOL_CALL_TIMEOUT_MS }),
+        () => this.client.callTool(
+          { name, arguments: args },
+          { timeout: options.timeoutMs ?? TOOL_CALL_TIMEOUT_MS },
+        ),
         neverSent,
       )
       const content = Array.isArray(result.content) ? (result.content as ToolCallResult['content']) : []
-      return { isError: result.isError === true, content }
+      const meta = typeof result._meta === 'object' && result._meta !== null
+        ? (result._meta as Record<string, unknown>)
+        : undefined
+      return {
+        isError: result.isError === true,
+        content,
+        workspaceNotConnected: result.isError === true && meta?.['instatic/error'] === WORKSPACE_NOT_CONNECTED,
+        ...(meta ? { _meta: meta } : {}),
+      }
     } catch (err) {
-      throw classifyFailure(err, this.siteUrl)
+      throw classifyFailure(err, this.siteUrl, this.rejectedMessage)
     }
   }
 

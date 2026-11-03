@@ -2,6 +2,7 @@
 /**
  * `instatic` executable: wires the real process into `runCli`.
  */
+import { spawn } from 'node:child_process'
 import { createInterface } from 'node:readline'
 import { runCli } from './cli'
 
@@ -26,6 +27,33 @@ function promptSecret(question: string): Promise<string> {
   })
 }
 
+/**
+ * Open `url` in the default browser. Never through a shell: the URL is one
+ * argv entry, so characters like & or " cannot change the command.
+ */
+function openBrowser(url: string): Promise<boolean> {
+  const command = process.platform === 'darwin'
+    ? { file: 'open', args: [url] }
+    : process.platform === 'win32'
+      ? { file: 'rundll32.exe', args: ['url.dll,FileProtocolHandler', url] }
+      : { file: 'xdg-open', args: [url] }
+  // Linux without a display (SSH, containers): nothing to open a browser on.
+  if (
+    command.file === 'xdg-open' &&
+    !process.env.DISPLAY && !process.env.WAYLAND_DISPLAY && !process.env.WSL_DISTRO_NAME
+  ) {
+    return Promise.resolve(false)
+  }
+  return new Promise((resolve) => {
+    const child = spawn(command.file, command.args, { stdio: 'ignore', detached: true, shell: false })
+    child.once('error', () => resolve(false))
+    child.once('spawn', () => {
+      child.unref()
+      resolve(true)
+    })
+  })
+}
+
 const code = await runCli({
   argv: process.argv.slice(2),
   env: process.env,
@@ -34,5 +62,6 @@ const code = await runCli({
   readStdin,
   stdinIsTty: Boolean(process.stdin.isTTY),
   promptSecret,
+  openBrowser,
 })
 process.exitCode = code
