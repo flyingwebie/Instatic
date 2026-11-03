@@ -28,33 +28,31 @@ Release flow:
 
 ## Publishing from flyingwebie/Instatic
 
-The source of truth is `.github/workflows/release.yml`: it runs when a `v*.*.*` tag is pushed. Merging a PR into `main` does not publish a Docker image, and updating the plugin ZIP does not update the running Instatic server.
+Releases are automatic. Every push to `main` (a merged PR) runs `.github/workflows/auto-release.yml`, which calls `scripts/prepare-release.ts` to decide what to do:
 
-To publish `v0.0.22`, first merge the `package.json` version update and `CHANGELOG.md` release notes into `main`. The plugin publication support and fork Coolify template must also be on `main` before tagging.
+| Merged change | Result |
+| --- | --- |
+| `package.json` holds a version with no `v<version>` tag (a hand-prepared release PR) | Release that version as-is |
+| PR title type `feat`, `fix`, `perf`, or `revert` | Bump the patch version (the minor for a `!` breaking change), move `## Unreleased` changelog notes under a dated heading (or use the PR title when there are none), commit `chore(release): <version>` to `main`, and release |
+| Anything else (`docs`, `chore`, `test`, `refactor`, upstream syncs) | No release; the change ships with the next one |
 
-From a checkout whose `origin` is `https://github.com/flyingwebie/Instatic.git`, run:
+The decision reads the PR title, so PR titles must stay Conventional Commits. To write richer release notes than the PR title, add them under `## Unreleased` in `CHANGELOG.md` in the feature PR itself.
 
-```sh
-git fetch origin main --tags
-git show origin/main:package.json
-# Confirm the version is 0.0.22 before creating the release tag.
-git tag -a v0.0.22 origin/main -m "Instatic 0.0.22"
-git push origin v0.0.22
-```
+After tagging, the workflow calls `.github/workflows/release.yml` directly (a tag pushed with `GITHUB_TOKEN` does not trigger other workflows). Pushing a `v*.*.*` tag by hand still runs `release.yml` the old way, for re-running a failed release.
 
-Tagging `origin/main` publishes the merged source even if a different task branch is checked out. Push only the new tag; do not push the local task branch to `main`.
-
-Open the repository's [Release workflow](https://github.com/flyingwebie/Instatic/actions/workflows/release.yml). Wait for **Verify** and **Publish GHCR Image** to succeed. The image job publishes:
+Open the repository's [Auto Release workflow](https://github.com/flyingwebie/Instatic/actions/workflows/auto-release.yml). Wait for **Verify** and **Publish GHCR Image** to succeed. The image job publishes:
 
 ```txt
-ghcr.io/flyingwebie/instatic:0.0.22
-ghcr.io/flyingwebie/instatic:0.0
+ghcr.io/flyingwebie/instatic:<version>
+ghcr.io/flyingwebie/instatic:<major>.<minor>
 ghcr.io/flyingwebie/instatic:latest
 ```
 
 The remaining jobs upload the install bundle and runnable server artifacts to the GitHub Release. Let the whole workflow finish before treating the release as complete.
 
-For an existing Coolify Postgres installation, use [`docker-compose.coolify.flyingwebie.yml`](../../docker-compose.coolify.flyingwebie.yml) in the same resource, retaining its volumes, credentials, and secret key. Set `INSTATIC_IMAGE=ghcr.io/flyingwebie/instatic:0.0.22`, pull the image, and redeploy. Once the new core container is healthy, reload the admin and retry the SEO/GEO plugin ZIP. See [coolify.md](coolify.md) for the deployment details.
+Upstream syncs bring CoreBunch's `package.json` version and changelog with them. When resolving the merge, keep the fork's version.
+
+For an existing Coolify Postgres installation, use [`docker-compose.coolify.flyingwebie.yml`](../../docker-compose.coolify.flyingwebie.yml) in the same resource, retaining its volumes, credentials, and secret key. Set `INSTATIC_IMAGE=ghcr.io/flyingwebie/instatic:<version>` (or `:latest` to follow every release), pull the image, and redeploy. See [coolify.md](coolify.md) for the deployment details.
 
 ## Pre-Tag Template Updates
 
@@ -217,6 +215,7 @@ docker pull ghcr.io/corebunch/instatic:latest
 - [docker-image.md](docker-image.md) — runtime image contract
 - [render.md](render.md) — Render Blueprint contract
 - `Dockerfile` — image build
-- `.github/workflows/release.yml` — tag trigger, verification, and image/artifact publishing
+- `.github/workflows/auto-release.yml` + `scripts/prepare-release.ts` — release-on-merge decision, version bump, and tagging
+- `.github/workflows/release.yml` — tag trigger (or call from auto-release), verification, and image/artifact publishing
 - `compose.prod.yml` — production image consumer
 - `docs/deployment/render/sqlite/render.yaml`, `docs/deployment/render/postgres/render.yaml` — Render Blueprint templates

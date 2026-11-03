@@ -1,0 +1,71 @@
+name: Auto Release
+
+# Every merge to main decides whether to cut a release (scripts/prepare-release.ts):
+# feat/fix/perf/revert PRs bump the version and changelog, a hand-prepared
+# untagged version is released as-is, and everything else is skipped.
+on:
+  push:
+    branches:
+      - main
+
+permissions:
+  contents: write
+  packages: write
+
+# One release at a time, never cancelled: each run reads the version the
+# previous run committed.
+concurrency:
+  group: auto-release
+  cancel-in-progress: false
+
+jobs:
+  prepare:
+    name: Prepare Release
+    runs-on: ubuntu-latest
+    outputs:
+      release: ${{ steps.plan.outputs.release }}
+      tag: ${{ steps.plan.outputs.tag }}
+    steps:
+      # Check out the tip of main, not the triggering SHA, so a queued run sees
+      # the release commit of the run before it.
+      - name: Checkout
+        uses: actions/checkout@v4
+        with:
+          ref: main
+          fetch-depth: 0
+
+      - name: Set up Bun
+        uses: oven-sh/setup-bun@v2
+
+      - name: Install dependencies
+        run: bun install --frozen-lockfile
+
+      - name: Plan release
+        id: plan
+        env:
+          COMMIT_MESSAGE: ${{ github.event.head_commit.message }}
+        run: bun scripts/prepare-release.ts
+
+      - name: Commit, tag, and push
+        if: steps.plan.outputs.release == 'true'
+        env:
+          VERSION: ${{ steps.plan.outputs.version }}
+          TAG: ${{ steps.plan.outputs.tag }}
+          CHANGED: ${{ steps.plan.outputs.changed }}
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          if [ "$CHANGED" = "true" ]; then
+            git commit -am "chore(release): ${VERSION}"
+            git push origin HEAD:main
+          fi
+          git tag -a "$TAG" -m "Instatic ${VERSION}"
+          git push origin "$TAG"
+
+  release:
+    name: Release
+    needs: prepare
+    if: needs.prepare.outputs.release == 'true'
+    uses: ./.github/workflows/release.yml
+    with:
+      tag: ${{ needs.prepare.outputs.tag }}
