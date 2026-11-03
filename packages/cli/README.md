@@ -1,4 +1,6 @@
-# instatic
+# @flyingwebie/instatic
+
+The `instatic` command-line client for [Instatic](https://github.com/CoreBunch/Instatic) sites.
 
 > **Unofficial.** This CLI is a community project. It is **not** made, endorsed, or supported by the [Instatic](https://github.com/CoreBunch/Instatic) project or its maintainers. Please report problems with it to [this fork](https://github.com/flyingwebie/Instatic), not upstream.
 
