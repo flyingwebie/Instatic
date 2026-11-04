@@ -119,9 +119,9 @@ function makeDb(options: {
   const tableRows = options.tableRows ?? { newsletter_submissions: newsletterTableRow }
   const db = createFakeDb(async (rawSql, params): Promise<DbResult> => {
     const sql = rawSql.replace(/\s+/g, ' ').trim().toLowerCase()
-    // getPublishedPageSnapshotById — joins data_row_versions to site_snapshots.
+    // The published-snapshot getters join data_row_versions to site_snapshots.
     // Must be matched before the generic `select data_rows.id` branch below
-    // (the snapshot getter's SELECT also starts with `select data_rows.id`).
+    // (the snapshot getters' SELECT also starts with `select data_rows.id`).
     if (sql.includes('site_snapshots.site_json')) {
       return {
         rows: [{

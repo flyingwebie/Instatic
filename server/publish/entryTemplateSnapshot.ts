@@ -21,7 +21,7 @@
  */
 import type { DbClient } from '../db/client'
 import type { PublishedPageSnapshot } from '../repositories/publish'
-import { getPublishedPageSnapshotById } from '../repositories/publish'
+import { getPublishedPageRuntimeAssets } from '../repositories/publish'
 import { resolveNotFoundTemplate, resolveTemplateChain } from '@core/templates/templateMatching'
 
 /**
@@ -35,15 +35,15 @@ async function withRuntimeAssetsOfPage(
   siteSnapshot: PublishedPageSnapshot,
   pageId: string,
 ): Promise<PublishedPageSnapshot> {
-  const own = await getPublishedPageSnapshotById(db, pageId)
+  // Only the manifest is read: the site document is already in hand, and
+  // re-fetching it per route made the full-publish row bake O(rows × site).
+  const runtimeAssets = await getPublishedPageRuntimeAssets(db, pageId)
   // The rendering page's manifest is authoritative, INCLUDING when it has
   // none. Merging only the present case would let a manifest that arrived on
   // `siteSnapshot` from anywhere else survive onto a route it was never
   // scoped to — which is the whole defect.
   const { runtimeAssets: _discarded, ...withoutAssets } = siteSnapshot
-  return own?.runtimeAssets
-    ? { ...withoutAssets, runtimeAssets: own.runtimeAssets }
-    : withoutAssets
+  return runtimeAssets ? { ...withoutAssets, runtimeAssets } : withoutAssets
 }
 
 /**

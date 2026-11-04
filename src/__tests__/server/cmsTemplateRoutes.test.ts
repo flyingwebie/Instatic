@@ -24,6 +24,11 @@ function makeTemplateRouteFakeDb(handlers: QueryHandler[]) {
     if (sql.startsWith('select logical_id, name, slug, kind') && sql.includes('from data_tables')) {
       return { rows: [], rowCount: 0 } as unknown as DbResult
     }
+    // Entry routes borrow their template page's runtime manifest; these
+    // fixture templates carry no scripts.
+    if (sql.startsWith('select data_row_versions.runtime_assets_json')) {
+      return { rows: [], rowCount: 0 } as unknown as DbResult
+    }
     for (const handler of handlers) {
       const result = handler(sql, params)
       if (result) return result

@@ -22,6 +22,7 @@
 
 import type { DbClient } from '../db/client'
 import type { SiteCssBundle } from '@core/publisher'
+import type { PublishedPageSnapshot } from '../repositories/publish'
 import { resolveTemplateChain } from '@core/templates'
 import { normalizeRouteBase } from '@core/templates/templateMatching'
 import {
@@ -85,6 +86,19 @@ export async function bakePublishedDataRowArtefacts(
     return has
   }
 
+  // Every row of a table renders through the same template, so its snapshot
+  // (the template's runtime manifest on the shared site) resolves once per
+  // table, not once per row.
+  const entrySnapshots = new Map<string, Promise<PublishedPageSnapshot>>()
+  const entrySnapshotFor = (tableSlug: string): Promise<PublishedPageSnapshot> => {
+    let snapshot = entrySnapshots.get(tableSlug)
+    if (!snapshot) {
+      snapshot = snapshotForEntryRoute(db, siteSnapshot, tableSlug)
+      entrySnapshots.set(tableSlug, snapshot)
+    }
+    return snapshot
+  }
+
   for (const route of routes) {
     if (!hasEntryChain(route.tableSlug)) continue
     const urlPath = publicRowPath(route.tableRouteBase, route.rowSlug)
@@ -94,7 +108,7 @@ export async function bakePublishedDataRowArtefacts(
       const syntheticUrl = new URL(`http://localhost${urlPath}`)
       // Runtime assets come from this table's entry template, not from the
       // arbitrary page the site-wide snapshot happens to name.
-      const snapshot = await snapshotForEntryRoute(db, siteSnapshot, route.tableSlug)
+      const snapshot = await entrySnapshotFor(route.tableSlug)
       const rendered = await renderPublishedDataRowTemplate(snapshot, row, {
         db,
         url: syntheticUrl,
