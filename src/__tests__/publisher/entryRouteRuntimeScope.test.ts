@@ -42,13 +42,14 @@ function siteSnapshot(): PublishedPageSnapshot {
   return { cmsSnapshotVersion: 1, pageRowId: 'oldest-page', site }
 }
 
-/** Stands in for the DB: only `getPublishedPageSnapshotById` is reached. */
-function dbReturning(byPageId: Record<string, unknown>): DbClient {
-  const fake = (async (_strings: TemplateStringsArray, ...params: unknown[]) => {
+/** Stands in for the DB: only `getPublishedPageRuntimeAssets` is reached. */
+function dbReturning(byPageId: Record<string, unknown>, queries: string[] = []): DbClient {
+  const fake = (async (strings: TemplateStringsArray, ...params: unknown[]) => {
+    queries.push(strings.join('?'))
     const pageId = String(params[0])
     const assets = byPageId[pageId]
     return assets
-      ? { rows: [{ row_id: pageId, published_at: '2026-01-01T00:00:00Z', first_published_at: '2026-01-01T00:00:00Z', site_json: makeSite(), runtime_assets_json: assets }], rowCount: 1 }
+      ? { rows: [{ runtime_assets_json: assets }], rowCount: 1 }
       : { rows: [], rowCount: 0 }
   }) as unknown as DbClient
   return fake
@@ -93,6 +94,20 @@ describe('entry-route runtime manifest', () => {
     const resolved = await snapshotForEntryRoute(db, snapshot, 'posts')
 
     expect(resolved.site).toBe(snapshot.site)
+  })
+
+  it('reads only the template\'s manifest, never the site document again', async () => {
+    // The caller already holds the site. Re-selecting `site_json` per route
+    // made a full publish's row bake re-fetch and re-parse the whole site
+    // once per entry row — minutes of publish time on a real site.
+    const queries: string[] = []
+    const db = dbReturning({ 'post-template': runtimeAssets('template') }, queries)
+
+    await snapshotForEntryRoute(db, siteSnapshot(), 'posts')
+
+    expect(queries).toHaveLength(1)
+    expect(queries[0]).toContain('runtime_assets_json')
+    expect(queries[0]).not.toContain('site_json')
   })
 
   it('falls back to the site snapshot when the table has no entry template', async () => {

@@ -17,7 +17,7 @@
  *   getDraftSiteDocument      — assemble the draft SiteDocument from rows
  *   persistSitePublish        — transactional write of one publish
  *   getPublishedPageBySlug    — look up a published page snapshot by slug
- *   getPublishedPageSnapshotById — same, by page row id
+ *   getPublishedPageRuntimeAssets — a published page's runtime manifest only
  *   getLatestPublishedSiteSnapshot — first published page snapshot (for 404s etc.)
  *   getDraftPublishStatus     — compare draft vs published state for the UI
  */
@@ -404,28 +404,30 @@ export async function getPublishedPageBySlug(
   return rows[0] ? snapshotFromQueryRow(rows[0]) : null
 }
 
-export async function getPublishedPageSnapshotById(
+/**
+ * The runtime manifest of a published page's active version — and nothing
+ * else. Routes rendered through a template (entry routes, the 404) borrow
+ * their template page's manifest. Selecting the joined `site_json` here
+ * re-fetched and re-parsed the whole site document on every call, which made
+ * a full publish's row bake cost O(rows × site size) in DB transfer and JSON
+ * parsing — minutes on a site with a few hundred entry rows.
+ */
+export async function getPublishedPageRuntimeAssets(
   db: DbClient,
   pageId: string,
-): Promise<PublishedPageSnapshot | null> {
-  const { rows } = await db<SnapshotQueryRow>`
-    select data_rows.id as row_id,
-           site_snapshots.site_json,
-           data_row_versions.runtime_assets_json,
-           site_snapshots.importmap_body,
-           site_snapshots.importmap_sha256,
-           data_row_versions.published_at,
-           (select min(versions.published_at) from data_row_versions versions where versions.row_id = data_rows.id) as first_published_at
+): Promise<PublishedPageRuntimeAssets | null> {
+  const { rows } = await db<{ runtime_assets_json: PublishedPageRuntimeAssets | null }>`
+    select data_row_versions.runtime_assets_json
     from data_rows
     join data_row_versions on data_row_versions.id = data_rows.active_version_id
-    join site_snapshots on site_snapshots.id = data_row_versions.site_snapshot_id
     where data_rows.id = ${pageId}
       and data_rows.table_id = 'pages'
       and data_rows.status = 'published'
       and data_rows.deleted_at is null
     limit 1
   `
-  return rows[0] ? snapshotFromQueryRow(rows[0]) : null
+  const assets = rows[0]?.runtime_assets_json
+  return assets && assets.scripts.length > 0 ? assets : null
 }
 
 /**
