@@ -6,6 +6,12 @@ This project is pre-1.0. Breaking changes may appear in minor or patch releases 
 
 ## Unreleased
 
+## 0.0.27 - 2026-11-04
+
+### Publishing
+
+- Publishing now reports how long each step took. Open the publish request in your browser's DevTools and check the Timing tab to see the split, for example how long the database write or the page bake took. Server logs record the same split for any publish that takes more than a second, and the MCP `site_publish` tool returns it in its result.
+
 ## 0.0.26 - 2026-11-04
 
 ### Publishing
