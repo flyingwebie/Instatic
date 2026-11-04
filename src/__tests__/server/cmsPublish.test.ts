@@ -8,6 +8,7 @@ import {
   getPublishedPageBySlug,
 } from '../../../server/repositories/publish'
 import { publishDraftSite } from '../../../server/publish/publishSite'
+import { formatServerTiming } from '../../../server/publish/publishTimer'
 import { createDataRow, saveDataRowDraft } from '../../../server/repositories/data'
 import { pageToCells } from '../../../src/core/data/pageFromRow'
 import { createFakeDb } from './dbTestFake'
@@ -308,6 +309,20 @@ describe('CMS publishing', () => {
     expect(result).toMatchObject({ publishedPages: 1 })
     expect(state.dataRowVersions).toHaveLength(1)
     expect(published?.site.pages[0].nodes.text_1.props.text).toBe('Published headline')
+  })
+
+  it('reports a wall-clock split of every publish phase', async () => {
+    const { db } = createPublishFakeDb()
+    await seedSiteAndPage(db, 'Timed headline')
+
+    const result = await publishDraftSite(db, 'admin_1')
+    const names = result.timings.map((phase) => phase.name)
+
+    expect(names).toEqual(['flush', 'lock', 'read', 'deps', 'scripts', 'db'])
+    expect(result.timings.every((phase) => phase.ms >= 0)).toBe(true)
+    const header = formatServerTiming(result.timings)
+    expect(header).toMatch(/^flush;dur=\d+\.\d, lock;dur=/)
+    expect(header).toMatch(/, total;dur=\d+\.\d$/)
   })
 
   it('does not expose later draft changes until another publish occurs', async () => {

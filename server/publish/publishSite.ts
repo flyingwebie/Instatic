@@ -56,9 +56,19 @@ import { bumpPublishVersion, getPublishVersion, withPublishLock } from './publis
 import { runPublishFlush } from './publishFlush'
 import { sweepStalePluginVersionAssets } from './stalePluginAssets'
 import { MAIN_SCOPE } from '../branches/scope'
+import {
+  createPublishTimer,
+  formatPublishTimingLog,
+  type PublishPhaseTiming,
+  type PublishTimer,
+} from './publishTimer'
+
+const SLOW_PUBLISH_LOG_MS = 1_000
 
 interface PublishResult {
   publishedPages: number
+  /** Wall-clock split of the publish, slowest phase first in the log line. */
+  timings: readonly PublishPhaseTiming[]
 }
 
 /**
@@ -90,14 +100,23 @@ export async function publishDraftSite(
   // Flush the collab relay so the published snapshot includes edits still
   // inside the debounce window (publish bakes exactly what the admins see).
   // Intrinsic to publishing now, not bolted onto the HTTP route.
+  const timer = createPublishTimer()
   await runPublishFlush()
+  timer.mark('flush')
   // Serialize against every other publish so the version read→bake→bump window
   // can't interleave cache generations and artefact swaps (ISS-038).
   return withPublishLock(async () => {
+    timer.mark('lock')
     const site = await getDraftSiteDocument(db, MAIN_SCOPE)
     if (!site) throw new Error('draft site not found')
-    const result = await publishSiteDocumentLocked(db, site, adminUserId, uploadsDir)
-    return { publishedPages: result.publishedPages }
+    timer.mark('read')
+    const result = await publishSiteDocumentLocked(db, site, adminUserId, uploadsDir, undefined, timer)
+    // Only a slow publish is worth a log line; the HTTP route returns the
+    // split as a Server-Timing header either way.
+    if (timer.phases.reduce((sum, phase) => sum + phase.ms, 0) >= SLOW_PUBLISH_LOG_MS) {
+      console.warn(`[publish:site] ${result.publishedPages} pages, ${formatPublishTimingLog(timer.phases)}`)
+    }
+    return { publishedPages: result.publishedPages, timings: timer.phases }
   })
 }
 
@@ -107,6 +126,7 @@ async function publishSiteDocumentLocked(
   adminUserId: string | null,
   uploadsDir?: string,
   editedPageId?: string,
+  timer: PublishTimer = createPublishTimer(),
 ) {
   // ── Phase 1: read inputs + run every expensive non-DB build ──────────────
   // Dependency installs (`bun install` on a cold cache) and per-page esbuild
@@ -132,6 +152,7 @@ async function publishSiteDocumentLocked(
   const runtimePackageImportmap: PublishedRuntimePackageImportmap | undefined = serializedImportmap
     ? { body: serializedImportmap.body, sha256: serializedImportmap.sha256 }
     : undefined
+  timer.mark('deps')
 
   const publishedSite: SiteDocument = {
     ...site,
@@ -187,6 +208,8 @@ async function publishSiteDocumentLocked(
     }
   }
 
+  timer.mark('scripts')
+
   // ── Phase 2: short transaction — DB writes only ───────────────────────────
   await persistSitePublish(db, {
     siteSnapshotId,
@@ -198,6 +221,7 @@ async function publishSiteDocumentLocked(
     publishedByUserId: adminUserId,
     editedPageId,
   })
+  timer.mark('db')
 
   const publishedPages = publishedSite.pages.length
 
@@ -225,6 +249,7 @@ async function publishSiteDocumentLocked(
   if (uploadsDir) {
     try {
       const { slot, slotDir } = await prepareInactiveSlot(uploadsDir)
+      timer.mark('slot')
 
       // Every distinct static asset referenced by ANY baked artefact.
       // Content-hashed filenames dedupe identical bytes across pages to a
@@ -249,6 +274,7 @@ async function publishSiteDocumentLocked(
       for (const asset of runtimeAssetFiles) {
         if (!assetsByPath.has(asset.publicPath)) assetsByPath.set(asset.publicPath, asset.bytes)
       }
+      timer.mark('css')
 
       // The 404 page: bake the notFound template (wrapped in its everywhere
       // layout chain) to `404.html`. Baked FIRST so a literal page with slug
@@ -274,6 +300,7 @@ async function publishSiteDocumentLocked(
           console.error('[publish:site] failed to bake the 404 artefact (falls through to live renderer):', err)
         }
       }
+      timer.mark('notFound')
 
       // HTML artefacts (or hole shells) for every page. A page that fails to
       // render (e.g. a VC ref cycle) is skipped and falls through to the live
@@ -303,12 +330,15 @@ async function publishSiteDocumentLocked(
       // template bakes into the same slot. Without this the slot swap would
       // strand every previously-baked row artefact in the inactive slot and
       // ALL row routes would fall to the live renderer after a full publish.
+      timer.mark('pages')
       const rowBake = await bakePublishedDataRowArtefacts(db, slotDir, nextPublishVersion)
+      timer.mark(`rows_${rowBake.baked}`)
       for (const cssBundle of rowBake.cssBundles) collectCssFiles(cssBundle)
 
       for (const [publicPath, bytes] of assetsByPath) {
         await writeStaticAsset(slotDir, publicPath, bytes)
       }
+      timer.mark(`assets_${assetsByPath.size}`)
       await swapSlot(uploadsDir, slot)
     } catch (err) {
       console.error('[publish:site] static artefact write failed (live renderer remains active):', err)
@@ -325,6 +355,7 @@ async function publishSiteDocumentLocked(
     } catch (err) {
       console.error('[publish:site] stale plugin asset sweep failed (harmless, retries next publish):', err)
     }
+    timer.mark('swap')
   }
 
   // Layer B: invalidate the in-memory render cache so the next visitor request
