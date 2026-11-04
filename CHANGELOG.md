@@ -6,6 +6,12 @@ This project is pre-1.0. Breaking changes may appear in minor or patch releases 
 
 ## Unreleased
 
+## 0.0.26 - 2026-11-04
+
+### Publishing
+
+- Publishing a site with post-type templates (blog articles, guides, projects…) is much faster. Each entry page baked during a full publish used to download and parse the whole site document again just to find its template's scripts; it now reads only the script list, and each collection looks up its template once. Visitor requests for entry pages that aren't cached yet skip the same extra read.
+
 ## 0.0.25 - 2026-11-03
 
 ### AI editing and connection reliability
