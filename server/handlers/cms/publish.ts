@@ -24,6 +24,7 @@ import { requireCapability, requireStepUp } from '../../auth/authz'
 import { createAuditEvent } from '../../repositories/audit'
 import { getDraftPublishStatus } from '../../repositories/publish'
 import { publishDraftSite } from '../../publish/publishSite'
+import { formatServerTiming } from '../../publish/publishTimer'
 import { RuntimeScriptBuildError } from '../../publish/runtime/buildError'
 import { jsonResponse, methodNotAllowed } from '../../http'
 import type { CmsHandlerOptions } from './shared'
@@ -71,7 +72,12 @@ export async function handlePublishRoutes(
       metadata: { publishedPages: result.publishedPages },
       ...requestAuditContext(req),
     })
-    return jsonResponse(result)
+    // The phase split shows in the browser's DevTools Timing tab, so a slow
+    // publish on a given install can be diagnosed without server access.
+    return jsonResponse(
+      { publishedPages: result.publishedPages },
+      { headers: { 'server-timing': formatServerTiming(result.timings) } },
+    )
   }
 
   if (url.pathname === '/admin/api/cms/publish/status') {
