@@ -31,19 +31,37 @@ const BOUNDARY = new Set(['{', '}', ';', ','])
 
 const WHITESPACE = new Set([' ', '\t', '\n', '\r', '\f'])
 
+/** An unquoted `url(` body, matched in place at `lastIndex` (sticky). */
+const UNQUOTED_URL = /url\(\s*[^'"\s)]/iy
+
 export function minifyCss(css: string): string {
-  let out = ''
+  // The output is collected as chunks and joined once. Reading the tail of a
+  // string grown with `+=` (`at(-1)`, `endsWith`, `slice`) makes the engine
+  // flatten and copy everything written so far, which turned every token into
+  // O(output) work and the whole minify quadratic in the stylesheet size.
+  // Every chunk is non-empty, so the last character is the last chunk's.
+  const parts: string[] = []
   let pendingSpace = false
   let index = 0
+
+  const lastChar = (): string | undefined => parts.at(-1)?.at(-1)
 
   /** Emit `text`, resolving the deferred whitespace run in front of it. */
   const write = (text: string) => {
     if (pendingSpace) {
       pendingSpace = false
-      const previous = out.at(-1)
-      if (previous !== undefined && !BOUNDARY.has(previous) && !BOUNDARY.has(text[0]!)) out += ' '
+      const previous = lastChar()
+      if (previous !== undefined && !BOUNDARY.has(previous) && !BOUNDARY.has(text[0]!)) parts.push(' ')
     }
-    out += text
+    parts.push(text)
+  }
+
+  /** Drop trailing `;` characters already written (the block is closing). */
+  const trimTrailingSemicolons = () => {
+    while (lastChar() === ';') {
+      const trimmed = parts.pop()!.slice(0, -1)
+      if (trimmed.length > 0) parts.push(trimmed)
+    }
   }
 
   while (index < css.length) {
@@ -83,12 +101,15 @@ export function minifyCss(css: string): string {
     // ── Unquoted url(…) ─────────────────────────────────────────────────────
     // A quoted body is handled by the string branch above once `url(` is
     // written; only the unquoted form needs its bytes preserved wholesale.
-    if ((char === 'u' || char === 'U') && /^url\(\s*[^'"\s)]/i.test(css.slice(index))) {
-      const close = css.indexOf(')', index)
-      const end = close === -1 ? css.length : close + 1
-      write(css.slice(index, end).replace(/\s+/g, ''))
-      index = end
-      continue
+    if (char === 'u' || char === 'U') {
+      UNQUOTED_URL.lastIndex = index
+      if (UNQUOTED_URL.test(css)) {
+        const close = css.indexOf(')', index)
+        const end = close === -1 ? css.length : close + 1
+        write(css.slice(index, end).replace(/\s+/g, ''))
+        index = end
+        continue
+      }
     }
 
     // ── Whitespace ──────────────────────────────────────────────────────────
@@ -100,7 +121,7 @@ export function minifyCss(css: string): string {
 
     // ── Block close: the trailing `;` inside it is redundant ────────────────
     if (char === '}') {
-      while (out.endsWith(';')) out = out.slice(0, -1)
+      trimTrailingSemicolons()
       pendingSpace = false
       write('}')
       index += 1
@@ -109,7 +130,7 @@ export function minifyCss(css: string): string {
 
     // ── Empty statement: `;;` or a `;` straight after `{` ───────────────────
     if (char === ';') {
-      const previous = out.at(-1)
+      const previous = lastChar()
       if (previous === undefined || previous === ';' || previous === '{') {
         pendingSpace = false
         index += 1
@@ -121,5 +142,5 @@ export function minifyCss(css: string): string {
     index += 1
   }
 
-  return out
+  return parts.join('')
 }
