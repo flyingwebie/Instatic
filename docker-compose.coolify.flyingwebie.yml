@@ -29,7 +29,9 @@ services:
   instatic:
     # Service name matters: it becomes the auto-generated subdomain, and the
     # SERVICE_URL_INSTATIC_* variables below are keyed to it.
-    image: ${INSTATIC_IMAGE:-ghcr.io/flyingwebie/instatic:latest}
+    # Set INSTATIC_VERSION in the Coolify UI (e.g. 0.0.28) to pin a release;
+    # unset follows `latest`.
+    image: ghcr.io/flyingwebie/instatic:${INSTATIC_VERSION:-latest}
     environment:
       # Declares the public route. Coolify assigns this service a domain and
       # points Traefik at container port 3001.
