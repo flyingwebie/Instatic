@@ -82,4 +82,26 @@ describe('minifyCss', () => {
     expect(minifyCss('.a { color: red } /* dangling')).toBe('.a{color: red}')
     expect(minifyCss('.a { content: "dangling')).toBe('.a{content: "dangling')
   })
+
+  it('scales linearly with the stylesheet size', () => {
+    // A publish runs every page's CSS through here, so a quadratic minify
+    // turned a large site's publish into minutes. Growing the input 8x must
+    // cost roughly 8x, not 64x; the bound leaves headroom for timer noise.
+    const rule = (i: number) =>
+      `.c-${i} {\n  color: var(--x);\n  background: url(/uploads/a-${i}.png);\n  font-family: "Inter", sans-serif;\n}\n`
+    const stylesheet = (rules: number) => Array.from({ length: rules }, (_, i) => rule(i)).join('')
+    const fastest = (css: string) => {
+      let best = Infinity
+      for (let run = 0; run < 3; run++) {
+        const start = performance.now()
+        minifyCss(css)
+        best = Math.min(best, performance.now() - start)
+      }
+      return best
+    }
+    const small = stylesheet(2_000)
+    const large = stylesheet(16_000)
+    fastest(small) // warm up the JIT before measuring
+    expect(fastest(large) / fastest(small)).toBeLessThan(24)
+  })
 })

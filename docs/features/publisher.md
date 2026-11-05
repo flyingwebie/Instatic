@@ -343,7 +343,11 @@ the same from a tokenizer's distance). Comments go, except `/*!` — which is wh
 `collectUserStylesheetCss` writes its per-file origin markers as `/*! path */`:
 they are worth more on a minified live page than in the canvas. The bundle hash
 is taken over the **minified** bytes, so a cache entry can never disagree with
-its URL.
+its URL. It runs once per page and per baked row in every publish, so it must
+stay linear in the stylesheet size: output is collected as chunks and joined
+once, because reading the tail of a string grown with `+=` copies the whole
+output each time (a quadratic minify made large-site publishes take minutes).
+`minifyCss.test.ts` gates the scaling.
 
 **JS** — `bundleScripts.ts` sets esbuild's `minify` from the build target.
 `target: 'publish'` minifies; `target: 'canvas'` does not, so a breakpoint in

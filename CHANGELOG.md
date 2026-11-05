@@ -6,6 +6,12 @@ This project is pre-1.0. Breaking changes may appear in minor or patch releases 
 
 ## Unreleased
 
+## 0.0.28 - 2026-11-05
+
+### Publishing
+
+- Publishing a large site is dramatically faster. Compressing the published CSS took time that grew with the square of the stylesheet's size, and it runs for every page and every collection entry, so a site with a large stylesheet could spend over a minute on it. It now takes a few milliseconds per page, and the published CSS is byte-for-byte the same as before.
+
 ## 0.0.27 - 2026-11-04
 
 ### Publishing
