@@ -26,7 +26,7 @@ https://raw.githubusercontent.com/flyingwebie/Instatic/refs/heads/main/docker-co
 
 This Compose file pulls the published image; it does not build the repository on the Coolify server. The release workflow publishes images under `GITHUB_REPOSITORY_OWNER`, so a version tag in `flyingwebie/Instatic` builds and publishes `ghcr.io/flyingwebie/instatic`. Publish a fresh core release containing the desired changes before redeploying. Merging into `main` alone does not update the image's `latest` tag. See [release-workflow.md](release-workflow.md).
 
-When switching an existing standard Postgres resource, load the new definition into that same Coolify resource. It uses the same `instatic`/`postgres` service names and `instatic-uploads`/`instatic-postgres-data` volume names. Retain the existing generated credentials and secret key. If `INSTATIC_IMAGE` already contains a CoreBunch image, set it to `ghcr.io/flyingwebie/instatic:latest` (or a published fork version tag), because an explicit override takes precedence over the new default.
+When switching an existing standard Postgres resource, load the new definition into that same Coolify resource. It uses the same `instatic`/`postgres` service names and `instatic-uploads`/`instatic-postgres-data` volume names. Retain the existing generated credentials and secret key. This template no longer reads `INSTATIC_IMAGE`: remove it from the resource and, to pin a fork release, set `INSTATIC_VERSION` to the version tag (e.g. `0.0.28`).
 
 After saving, use **Pull Latest Images & Restart**, wait for the app to become healthy, and reload the admin page. Coolify stores pasted Compose definitions on the resource; changing a repository file does not update an already-pasted definition automatically.
 
@@ -156,6 +156,12 @@ Pin a version for predictable upgrades by setting `INSTATIC_IMAGE` in the Coolif
 
 ```txt
 INSTATIC_IMAGE=ghcr.io/corebunch/instatic:0.0.21
+```
+
+The flyingwebie template takes just the tag instead, via `INSTATIC_VERSION` (default `latest`):
+
+```txt
+INSTATIC_VERSION=0.0.28
 ```
 
 ## ARM64 Hosts

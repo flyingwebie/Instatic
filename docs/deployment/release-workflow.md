@@ -52,7 +52,7 @@ The remaining jobs upload the install bundle and runnable server artifacts to th
 
 Upstream syncs bring CoreBunch's `package.json` version and changelog with them. When resolving the merge, keep the fork's version.
 
-For an existing Coolify Postgres installation, use [`docker-compose.coolify.flyingwebie.yml`](../../docker-compose.coolify.flyingwebie.yml) in the same resource, retaining its volumes, credentials, and secret key. Set `INSTATIC_IMAGE=ghcr.io/flyingwebie/instatic:<version>` (or `:latest` to follow every release), pull the image, and redeploy. See [coolify.md](coolify.md) for the deployment details.
+For an existing Coolify Postgres installation, use [`docker-compose.coolify.flyingwebie.yml`](../../docker-compose.coolify.flyingwebie.yml) in the same resource, retaining its volumes, credentials, and secret key. Set `INSTATIC_VERSION=<version>` (or leave it unset to follow `latest`), pull the image, and redeploy. See [coolify.md](coolify.md) for the deployment details.
 
 ## Pre-Tag Template Updates
 
