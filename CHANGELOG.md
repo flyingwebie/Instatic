@@ -6,6 +6,12 @@ This project is pre-1.0. Breaking changes may appear in minor or patch releases 
 
 ## Unreleased
 
+## 0.0.29 - 2026-11-13
+
+### Editor
+
+- Saving a script or stylesheet no longer fails on sites with many or large code files. Every save used to send all of the site's code files to the server in one message, and once they added up to more than 4 MB the server undid any save that made them bigger: the editor showed the change, but it never reached the published site. Each file is now sent on its own, and two people editing different files no longer overwrite each other. Existing sites are converted automatically the first time the server loads them.
+
 ## 0.0.28 - 2026-11-05
 
 ### Publishing
