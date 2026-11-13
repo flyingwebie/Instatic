@@ -548,8 +548,11 @@ plus one `site:<branch>` doc per branch for the shell and the roster order
 as a Y.Map with the module's inline-text prop as Y.Text, nested
 `breakpointOverrides` Y.Maps, `children` as Y.Array; `parentId` is derived,
 never stored). Layout snapshots are whole-value LWW. The shell keeps
-`settings` / `styleRules` / `explorer` as per-entry Y.Maps and everything
-else plain. Deterministic reconciles (`integrity.ts` tree repair, roster
+`settings` / `styleRules` / `explorer` as per-entry Y.Maps, `files` as a
+keyed list (`keyedList.ts`: one Y.Map entry per file plus an order array, so
+saving one file sends only that file and never the whole file layer), and
+everything else plain. A site doc stored before keyed lists is upgraded in
+place when the relay hydrates it (`upgradeSiteDocLayout`). Deterministic reconciles (`integrity.ts` tree repair, roster
 order) run identically on every peer.
 
 **Editor write path** (`src/admin/pages/site/store/slices/site/collabBinding.ts`):

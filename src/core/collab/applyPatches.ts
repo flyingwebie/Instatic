@@ -27,7 +27,8 @@ import type { BaseNode, Page, SiteDocument } from '@core/page-tree'
 import type { VisualComponent } from '@core/visualComponents'
 import type { SavedLayout } from '@core/layouts'
 import { encodeCollabDocId, siteDocId } from './docIds'
-import { dataMap, inlineTextPropOf, metaMap, rostersMap, SHELL_PER_ENTRY_KEYS, shellMap, treeMap } from './schema'
+import { dataMap, inlineTextPropOf, metaMap, rostersMap, SHELL_KEYED_LIST_KEYS, SHELL_PER_ENTRY_KEYS, shellMap, treeMap } from './schema'
+import { applyKeyedListDiff, buildKeyedList } from './keyedList'
 import { buildBreakpointOverridesMap, buildNodeMap, buildPropsMap } from './nodeY'
 import { populateComponentDoc, populateLayoutDoc, populatePageDoc } from './seed'
 import { applyTextDiff } from './textDiff'
@@ -43,6 +44,7 @@ const COLLECTION_KIND: Record<Collection, 'page' | 'component' | 'layout'> = {
 const SHELL_SKIPPED_KEYS = new Set(['updatedAt', 'id'])
 
 type Row = Page | VisualComponent | SavedLayout
+type KeyedRecords = ReadonlyArray<{ id: string }>
 
 function rowsOf(site: SiteDocument, col: Collection): readonly Row[] {
   return site[col]
@@ -369,6 +371,7 @@ export function applySitePatchesToDocs(
   }
   const shellHeads = new Set<string>()
   const shellEntryTargets = new Map<string, Set<string>>() // head → entry keys ('*' = whole)
+  const shellListHeads = new Set<string>()
   const collectionPatches = new Map<Collection, Patches[number][]>()
 
   for (const patch of patches) {
@@ -384,6 +387,8 @@ export function applySitePatchesToDocs(
     if (SHELL_PER_ENTRY_KEYS.has(head)) {
       shellEntryTargets.set(head, shellEntryTargets.get(head) ?? new Set())
       shellEntryTargets.get(head)!.add(path.length === 1 ? '*' : String(path[1]))
+    } else if (SHELL_KEYED_LIST_KEYS.has(head)) {
+      shellListHeads.add(head)
     } else {
       shellHeads.add(head)
     }
@@ -396,7 +401,12 @@ export function applySitePatchesToDocs(
     if (colPatches.some(isMembershipShapedOp)) collectionsWithMembershipOps.push(col)
   }
 
-  if (shellHeads.size > 0 || shellEntryTargets.size > 0 || collectionsWithMembershipOps.length > 0) {
+  if (
+    shellHeads.size > 0 ||
+    shellListHeads.size > 0 ||
+    shellEntryTargets.size > 0 ||
+    collectionsWithMembershipOps.length > 0
+  ) {
     const siteDoc = docs.ensure(siteDocId(branchId))
     touch(siteDocId(branchId))
     siteDoc.transact(() => {
@@ -405,6 +415,13 @@ export function applySitePatchesToDocs(
         const value = (nextSite as unknown as Record<string, unknown>)[head]
         if (value === undefined) shell.delete(head)
         else shell.set(head, value)
+      }
+      for (const head of shellListHeads) {
+        const preRecords = (preSite as unknown as Record<string, KeyedRecords | undefined>)[head] ?? []
+        const nextRecords = (nextSite as unknown as Record<string, KeyedRecords | undefined>)[head] ?? []
+        const list = shell.get(head)
+        if (list instanceof Y.Map) applyKeyedListDiff(list, preRecords, nextRecords, applyChildrenDiff)
+        else shell.set(head, buildKeyedList(nextRecords))
       }
       for (const [head, targets] of shellEntryTargets) {
         const nextEntries = (nextSite as unknown as Record<string, Record<string, unknown>>)[head] ?? {}

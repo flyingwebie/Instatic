@@ -45,6 +45,12 @@ export const rostersMap = (doc: Y.Doc): Y.Map<unknown> => doc.getMap<unknown>('r
 export const SHELL_PER_ENTRY_KEYS = new Set(['settings', 'styleRules', 'explorer'])
 
 /**
+ * Shell fields that are arrays of `{ id }` records, stored as a keyed list
+ * (`keyedList.ts`) so a change to one record ships only that record.
+ */
+export const SHELL_KEYED_LIST_KEYS = new Set(['files'])
+
+/**
  * The one prop of a module stored as Y.Text (character-level merge).
  * Resolved from the module registry — callers must have registered modules
  * (`import '@modules/base'`); unregistered modules degrade to plain-string
