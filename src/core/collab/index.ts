@@ -57,6 +57,7 @@ export {
   seedPageDoc,
   seedSiteDoc,
   seedSiteDocFromParts,
+  upgradeSiteDocLayout,
   type SiteDocRosterIds,
 } from './seed'
 export {

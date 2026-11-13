@@ -36,6 +36,7 @@ import {
   parseCollabDocId,
   projectSiteDoc,
   siteDocId,
+  upgradeSiteDocLayout,
 } from '@core/collab'
 import type { DbClient } from '../db/client'
 import {
@@ -254,8 +255,10 @@ export function createCollabRelay(
       let generation: string
       let minted: boolean
       let seeded = false
+      let layoutUpgraded = false
       if (stored) {
         Y.applyUpdate(doc, stored.state, 'hydrate')
+        layoutUpgraded = parsed?.kind === 'site' && upgradeSiteDocLayout(doc)
         // Rows written before migration 023 carry ''.
         minted = stored.generation === ''
         generation = minted ? nanoid() : stored.generation
@@ -294,8 +297,8 @@ export function createCollabRelay(
       } else if (parsed) {
         persistence.noteOpenedRow(docId, { stored: stored !== null, seeded })
       }
-      if (minted) {
-        // Persist the mint IMMEDIATELY rather than through the debounce. A doc
+      if (minted || layoutUpgraded) {
+        // Persist the mint (or the layout upgrade) IMMEDIATELY rather than through the debounce. A doc
         // that hydrated cleanly is not dirty, so a mint riding the debounce
         // would never reach the DB — the next open would mint a DIFFERENT id
         // and reset every bound client for a byte-identical lineage.

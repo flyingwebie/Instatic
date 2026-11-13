@@ -12,8 +12,9 @@ import * as Y from 'yjs'
 import type { Page, SiteDocument } from '@core/page-tree'
 import type { VisualComponent } from '@core/visualComponents'
 import type { SavedLayout } from '@core/layouts'
-import { dataMap, metaMap, rostersMap, SEED_CLIENT_ID, SEED_ORIGIN, SHELL_PER_ENTRY_KEYS, shellMap, treeMap } from './schema'
+import { dataMap, metaMap, rostersMap, SEED_CLIENT_ID, SEED_ORIGIN, SHELL_KEYED_LIST_KEYS, SHELL_PER_ENTRY_KEYS, shellMap, treeMap } from './schema'
 import { buildNodeMap } from './nodeY'
+import { buildKeyedList } from './keyedList'
 
 function seeding(doc: Y.Doc, fn: () => void): void {
   const previousClientId = doc.clientID
@@ -118,6 +119,8 @@ export function seedSiteDocFromParts(
           if (entryValue !== undefined) entryMap.set(entryKey, entryValue)
         }
         shell.set(key, entryMap)
+      } else if (SHELL_KEYED_LIST_KEYS.has(key)) {
+        shell.set(key, buildKeyedList(Array.isArray(value) ? value : []))
       } else {
         shell.set(key, value)
       }
@@ -146,4 +149,20 @@ export function seedSiteDoc(doc: Y.Doc, site: SiteDocument): void {
     components: visualComponents.map((vc) => vc.id),
     layouts: layouts.map((l) => l.id),
   })
+}
+
+/**
+ * Bring a site doc hydrated from a stored blob up to the current layout.
+ * Blobs written before keyed lists hold those shell fields as one plain
+ * array; convert them in place so the doc keeps its lineage and history.
+ * Returns whether anything changed (the caller persists the result).
+ */
+export function upgradeSiteDocLayout(doc: Y.Doc): boolean {
+  const shell = shellMap(doc)
+  const stale = [...SHELL_KEYED_LIST_KEYS].filter((key) => Array.isArray(shell.get(key)))
+  if (stale.length === 0) return false
+  seeding(doc, () => {
+    for (const key of stale) shell.set(key, buildKeyedList(shell.get(key) as unknown[]))
+  })
+  return true
 }

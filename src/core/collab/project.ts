@@ -9,7 +9,8 @@ import type { BaseNode, Page, PageNode } from '@core/page-tree'
 import { reindexNodeParents } from '@core/page-tree'
 import type { VisualComponent } from '@core/visualComponents'
 import type { SavedLayout } from '@core/layouts'
-import { dataMap, metaMap, rostersMap, shellMap, treeMap } from './schema'
+import { dataMap, metaMap, rostersMap, SHELL_KEYED_LIST_KEYS, shellMap, treeMap } from './schema'
+import { projectKeyedList } from './keyedList'
 import { own, projectNodeMap } from './nodeY'
 import { reconcileTreeIntegrity } from './integrity'
 
@@ -81,7 +82,9 @@ export function projectSiteDoc(doc: Y.Doc): ProjectedSiteDoc {
   const shellSrc = shellMap(doc)
   const shell: Record<string, unknown> = {}
   for (const [key, value] of shellSrc.entries()) {
-    if (value instanceof Y.Map) {
+    if (value instanceof Y.Map && SHELL_KEYED_LIST_KEYS.has(key)) {
+      shell[key] = projectKeyedList(value)
+    } else if (value instanceof Y.Map) {
       const entries: Record<string, unknown> = {}
       for (const [entryKey, entryValue] of value.entries()) entries[entryKey] = own(entryValue)
       shell[key] = entries
