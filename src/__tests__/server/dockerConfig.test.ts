@@ -112,10 +112,12 @@ describe('coolify docker config', () => {
       .join('\n')
   }
 
+  // The fork's template pins a release by tag (`INSTATIC_VERSION`) instead of
+  // overriding the whole image reference, so it cannot point at another repo.
   const COOLIFY_COMPOSE_IMAGES = {
-    'docker-compose.coolify.yml': 'ghcr.io/corebunch/instatic:latest',
-    'docker-compose.coolify.sqlite.yml': 'ghcr.io/corebunch/instatic:latest',
-    'docker-compose.coolify.flyingwebie.yml': 'ghcr.io/flyingwebie/instatic:latest',
+    'docker-compose.coolify.yml': '${INSTATIC_IMAGE:-ghcr.io/corebunch/instatic:latest}',
+    'docker-compose.coolify.sqlite.yml': '${INSTATIC_IMAGE:-ghcr.io/corebunch/instatic:latest}',
+    'docker-compose.coolify.flyingwebie.yml': 'ghcr.io/flyingwebie/instatic:${INSTATIC_VERSION:-latest}',
   }
   const COOLIFY_COMPOSE_FILES = Object.keys(COOLIFY_COMPOSE_IMAGES)
 
@@ -142,7 +144,7 @@ describe('coolify docker config', () => {
   it.each(Object.entries(COOLIFY_COMPOSE_IMAGES))('pulls the repository image rather than building in %s', (path, image) => {
     const compose = effectiveYaml(path)
 
-    expect(compose).toContain(`image: \${INSTATIC_IMAGE:-${image}}`)
+    expect(compose).toContain(`image: ${image}`)
     expect(compose).not.toContain('build:')
   })
 
